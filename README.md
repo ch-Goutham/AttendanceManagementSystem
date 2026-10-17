@@ -54,6 +54,7 @@ Open the app and choose **Admin Register**. Admin registration is open in this s
 - `GET /api/employees` — admin lists employees
 - `PATCH /api/employees/:id/status` — admin activates/deactivates an employee
 - `PATCH /api/employees/:id/password` — admin resets an employee's password (≥ 8 chars)
+- `DELETE /api/employees/:id` — admin permanently deletes an employee (and their attendance/leave records); employees only, never your own account
 - `GET /api/attendance` — admin attendance records (all or `employeeId`); employee gets own records only
 - `POST /api/attendance` — admin marks any employee (Present/Absent/Leave); **employee marks only their own day as Present/Absent**
 - `GET /api/attendance/summary?month=YYYY-MM` — attendance counts/percentage

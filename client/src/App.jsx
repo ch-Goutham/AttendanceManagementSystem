@@ -19,6 +19,11 @@ import {
   AlertCircle,
   Clock,
   Send,
+  Menu,
+  KeyRound,
+  UserX,
+  UserCheck,
+  Trash2,
 } from 'lucide-react';
 import api from './api';
 import 'react-calendar/dist/Calendar.css';
@@ -134,7 +139,10 @@ function App() {
     localStorage.removeItem('attendance_token');
     localStorage.removeItem('attendance_user');
     setAuth(null);
-    navigate(wasAdmin ? '/admin-login' : '/login');
+    // Always return to the sign-in screen that matches the role: employees to
+    // the employee portal, admins to the admin console. `replace` keeps the
+    // protected screen out of the history so Back can't re-enter it.
+    navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
   };
 
   const onAuth = (data) => {
@@ -365,10 +373,6 @@ function AdminLogin({ onAuth }) {
 
         <p className="auth-hint"><Link to="/forgot-password?from=admin">Forgot password?</Link></p>
 
-        {statusLoaded && adminExists && mode === 'login' && (
-          <p className="auth-note">Additional admin accounts are created from within this console.</p>
-        )}
-
         <p className="auth-foot"><Link to="/login">Employee sign in</Link></p>
       </div>
     </div>
@@ -532,13 +536,40 @@ const PAGE_TITLES = {
 function Shell({ user, signOut, children, activePage, setActivePage }) {
   const nav = user.role === 'admin' ? ADMIN_NAV : EMPLOYEE_NAV;
   const title = PAGE_TITLES[user.role]?.[activePage] || 'Workspace';
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close the mobile drawer whenever the visible page changes.
+  useEffect(() => { setMenuOpen(false); }, [activePage]);
+
+  const selectPage = (key) => {
+    setActivePage(key);
+    setMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {menuOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+
+      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="side-brand">
           <div className="brand-mark small"><ClipboardCheck size={20} /></div>
           <span>Attend<span className="brand-light">wise</span></span>
+          <button
+            type="button"
+            className="sidebar-close"
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <div className="side-label">WORKSPACE</div>
@@ -547,7 +578,7 @@ function Shell({ user, signOut, children, activePage, setActivePage }) {
             key={item.key}
             type="button"
             className={`nav-item ${activePage === item.key ? 'active' : ''}`}
-            onClick={() => { setActivePage(item.key); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            onClick={() => selectPage(item.key)}
           >
             {item.icon}
             <span>{item.label}</span>
@@ -568,9 +599,19 @@ function Shell({ user, signOut, children, activePage, setActivePage }) {
 
       <main className="main-area">
         <header className="topbar">
-          <div>
-            <span className="breadcrumb">Workspace / </span>
-            <b>{title}</b>
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="menu-btn"
+              aria-label="Open menu"
+              onClick={() => setMenuOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <div>
+              <span className="breadcrumb">Workspace / </span>
+              <b>{title}</b>
+            </div>
           </div>
           <div className="top-user"><span className="online-dot" /> {user.email}</div>
         </header>
@@ -604,8 +645,8 @@ function AdminDashboard({ user, activePage, setActivePage }) {
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [newEmp, setNewEmp] = useState({ name: '', email: '', password: '', employeeCode: '', department: '', role: 'employee' });
-  const [mark, setMark] = useState({ employeeId: '', date: dateKey(new Date()), status: 'Present', note: '' });
+  const [newEmp, setNewEmp] = useState({ name: '', email: '', password: '', employeeCode: '', department: '' });
+  const [mark, setMark] = useState({ employeeId: '', date: dateKey(new Date()), status: 'Present' });
 
   const [leaves, setLeaves] = useState([]);
   const [leaveStatusFilter, setLeaveStatusFilter] = useState('');
@@ -695,10 +736,9 @@ function AdminDashboard({ user, activePage, setActivePage }) {
     event.preventDefault();
     try {
       await api.post('/employees', newEmp);
-      const createdRole = newEmp.role === 'admin' ? 'Admin' : 'Employee';
-      setNewEmp({ name: '', email: '', password: '', employeeCode: '', department: '', role: 'employee' });
+      setNewEmp({ name: '', email: '', password: '', employeeCode: '', department: '' });
       setShowForm(false);
-      notify('success', `${createdRole} account created.`);
+      notify('success', 'Employee account created.');
       await loadEmployees();
     } catch (error) { notify('error', errMsg(error)); }
   }
@@ -736,6 +776,16 @@ function AdminDashboard({ user, activePage, setActivePage }) {
     } catch (error) { notify('error', errMsg(error)); }
   }
 
+  async function deleteEmployee(id) {
+    try {
+      await api.delete(`/employees/${id}`);
+      notify('success', 'Employee account deleted.');
+      if (resetId === id) { setResetId(''); setTempPassword(''); }
+      if (employeeId === id) setEmployeeId('');
+      await Promise.all([loadEmployees(), load(), loadPending(), loadLeaves()]);
+    } catch (error) { notify('error', errMsg(error)); }
+  }
+
   async function submitReset(event) {
     event.preventDefault();
     setResetBusy(true);
@@ -765,7 +815,7 @@ function AdminDashboard({ user, activePage, setActivePage }) {
           <p className="muted">
             {activePage === 'attendance' && 'Manage your team and keep daily attendance up to date.'}
             {activePage === 'approvals' && 'Confirm attendance employees marked themselves.'}
-            {activePage === 'employees' && 'Create employee or admin accounts, reset passwords and handle resignations.'}
+            {activePage === 'employees' && 'Create employee accounts, reset passwords and handle resignations.'}
             {activePage === 'leaves' && "Review and approve your team's leave applications."}
           </p>
         </div>
@@ -816,10 +866,6 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                   <option>Present</option><option>Absent</option><option>Leave</option>
                 </select>
               </label>
-              <label>
-                Note (optional)
-                <input value={mark.note} onChange={(e) => setMark({ ...mark, note: e.target.value })} placeholder="Reason or note" />
-              </label>
               <button className="primary" disabled={activeEmployees.length === 0}>Save attendance</button>
             </form>
           </section>
@@ -845,7 +891,7 @@ function AdminDashboard({ user, activePage, setActivePage }) {
               ) : (
                 <table>
                   <thead>
-                    <tr><th>Employee</th><th>Date</th><th>Department</th><th>Status</th><th>Approval</th><th>Note</th></tr>
+                    <tr><th>Employee</th><th>Date</th><th>Department</th><th>Status</th><th>Approval</th></tr>
                   </thead>
                   <tbody>
                     {records.map((r) => (
@@ -860,10 +906,9 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                         <td>{r.employee?.department || '—'}</td>
                         <td><Status status={r.status} /></td>
                         <td><Status status={r.approval} /></td>
-                        <td>{r.note || '—'}</td>
                       </tr>
                     ))}
-                    {!records.length && <tr><td colSpan="6" className="empty">No attendance records for this month yet.</td></tr>}
+                    {!records.length && <tr><td colSpan="5" className="empty">No attendance records for this month yet.</td></tr>}
                   </tbody>
                 </table>
               )}
@@ -887,7 +932,7 @@ function AdminDashboard({ user, activePage, setActivePage }) {
             ) : (
               <table>
                 <thead>
-                  <tr><th>Employee</th><th>Date</th><th>Marked</th><th>Note</th><th>Submitted</th><th>Actions</th></tr>
+                  <tr><th>Employee</th><th>Date</th><th>Marked</th><th>Submitted</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                   {pending.map((r) => (
@@ -900,7 +945,6 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                       </td>
                       <td>{r.date}</td>
                       <td><Status status={r.status} /></td>
-                      <td>{r.note || '—'}</td>
                       <td>{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '—'}</td>
                       <td>
                         <div className="row-actions">
@@ -921,7 +965,7 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                       </td>
                     </tr>
                   ))}
-                  {!pending.length && <tr><td colSpan="6" className="empty">No self-marks awaiting approval.</td></tr>}
+                  {!pending.length && <tr><td colSpan="5" className="empty">No self-marks awaiting approval.</td></tr>}
                 </tbody>
               </table>
             )}
@@ -958,32 +1002,11 @@ function AdminDashboard({ user, activePage, setActivePage }) {
               <div className="panel-heading">
                 <div>
                   <h2>Create account</h2>
-                  <p className="muted small-text">Employees mark attendance; admins administer the workspace. Only an admin can create another admin.</p>
+                  <p className="muted small-text">Create an employee account. Employees sign in to mark their own attendance and apply for leave.</p>
                 </div>
               </div>
               <form className="form-grid" onSubmit={createEmployee}>
-                <label>
-                  Role
-                  <select
-                    value={newEmp.role}
-                    onChange={(e) => {
-                      const role = e.target.value;
-                      setNewEmp({
-                        ...newEmp,
-                        role,
-                        employeeCode: role === 'admin' ? '' : newEmp.employeeCode,
-                        department: role === 'admin' ? '' : newEmp.department,
-                      });
-                    }}
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-                {(newEmp.role === 'admin'
-                  ? [['name', 'Full name'], ['email', 'Email'], ['password', 'Temporary password']]
-                  : [['name', 'Full name'], ['email', 'Email'], ['password', 'Temporary password'], ['employeeCode', 'Employee ID'], ['department', 'Department']]
-                ).map(([key, label]) => (
+                {[['name', 'Full name'], ['email', 'Email'], ['password', 'Temporary password'], ['employeeCode', 'Employee ID'], ['department', 'Department']].map(([key, label]) => (
                   <label key={key}>
                     {label}
                     {key === 'password' ? (
@@ -994,7 +1017,7 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                   </label>
                 ))}
                 <div className="form-actions">
-                  <button className="primary">Create {newEmp.role === 'admin' ? 'admin' : 'employee'}</button>
+                  <button className="primary">Create employee</button>
                   <button type="button" className="secondary" onClick={() => setShowForm(false)}>Cancel</button>
                 </div>
               </form>
@@ -1016,7 +1039,12 @@ function AdminDashboard({ user, activePage, setActivePage }) {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Name</th><th>Role</th><th>Employee ID</th><th>Email</th><th>Department</th><th>Account</th><th>Actions</th></tr>
+                  <tr>
+                    <th>Name</th><th>Role</th><th>Employee ID</th><th>Email</th><th>Department</th><th>Account</th>
+                    <th className="col-action">Reset</th>
+                    <th className="col-action">Deactivate</th>
+                    <th className="col-action">Delete</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {employees.map((e) => (
@@ -1027,32 +1055,56 @@ function AdminDashboard({ user, activePage, setActivePage }) {
                       <td>{e.email}</td>
                       <td>{e.department || '—'}</td>
                       <td><Status status={e.isActive === false ? 'Resigned' : 'Active'} /></td>
-                      <td>
-                        <div className="row-actions">
-                          <button className="link-btn" onClick={() => startReset(e.id)} disabled={resetId === e.id}>Reset</button>
-                          {e.isActive === false ? (
-                            <button className="link-btn" onClick={() => setEmployeeActive(e.id, true)}>Reactivate</button>
-                          ) : isSelf(e.id) ? (
-                            <span className="muted small-text">You</span>
-                          ) : (
-                            <button
-                              className="link-btn danger-text"
-                              onClick={() =>
-                                askConfirm({
-                                  title: 'Deactivate account?',
-                                  message: `${e.name} will no longer be able to sign in. Their attendance and leave history are kept.`,
-                                  confirmLabel: 'Deactivate',
-                                  danger: true,
-                                  onConfirm: () => setEmployeeActive(e.id, false),
-                                })
-                              }
-                            >Deactivate</button>
-                          )}
-                        </div>
+                      <td className="col-action">
+                        <button className="link-btn" title="Reset password" onClick={() => startReset(e.id)} disabled={resetId === e.id}>
+                          <KeyRound size={14} /> Reset
+                        </button>
+                      </td>
+                      <td className="col-action">
+                        {e.isActive === false ? (
+                          <button className="link-btn" title="Reactivate account" onClick={() => setEmployeeActive(e.id, true)}>
+                            <UserCheck size={14} /> Reactivate
+                          </button>
+                        ) : isSelf(e.id) ? (
+                          <span className="muted small-text">You</span>
+                        ) : (
+                          <button
+                            className="link-btn danger-text"
+                            title="Deactivate account"
+                            onClick={() =>
+                              askConfirm({
+                                title: 'Deactivate account?',
+                                message: `${e.name} will no longer be able to sign in. Their attendance and leave history are kept.`,
+                                confirmLabel: 'Deactivate',
+                                danger: true,
+                                onConfirm: () => setEmployeeActive(e.id, false),
+                              })
+                            }
+                          ><UserX size={14} /> Deactivate</button>
+                        )}
+                      </td>
+                      <td className="col-action">
+                        {e.role === 'employee' ? (
+                          <button
+                            className="link-btn danger-text"
+                            title="Delete employee"
+                            onClick={() =>
+                              askConfirm({
+                                title: 'Delete employee permanently?',
+                                message: `${e.name}, their attendance and their leave records will be permanently removed. This cannot be undone.`,
+                                confirmLabel: 'Delete',
+                                danger: true,
+                                onConfirm: () => deleteEmployee(e.id),
+                              })
+                            }
+                          ><Trash2 size={14} /> Delete</button>
+                        ) : (
+                          <span className="muted small-text">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
-                  {!employees.length && <tr><td colSpan="7" className="empty">No accounts yet. Add your first employee above.</td></tr>}
+                  {!employees.length && <tr><td colSpan="9" className="empty">No accounts yet. Add your first employee above.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1149,7 +1201,7 @@ function EmployeeDashboard({ user, activePage }) {
   const [records, setRecords] = useState([]);
   const [summary, setSummary] = useState(null);
   const [activeDate, setActiveDate] = useState(new Date());
-  const [mark, setMark] = useState({ date: dateKey(new Date()), status: 'Present', note: '' });
+  const [mark, setMark] = useState({ date: dateKey(new Date()), status: 'Present' });
   const [leaveForm, setLeaveForm] = useState({ startDate: '', endDate: '', reason: '' });
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1300,7 +1352,6 @@ function EmployeeDashboard({ user, activePage }) {
                 ) : (
                   <span className="status status-unmarked">Not marked</span>
                 )}
-                {selected?.note && <p className="muted">{selected.note}</p>}
               </div>
 
               <div className="percentage-box">
@@ -1324,17 +1375,16 @@ function EmployeeDashboard({ user, activePage }) {
                 <Spinner label="Loading..." />
               ) : (
                 <table>
-                  <thead><tr><th>Date</th><th>Status</th><th>Approval</th><th>Note</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Status</th><th>Approval</th></tr></thead>
                   <tbody>
                     {[...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8).map((r) => (
                       <tr key={r.date}>
                         <td>{r.date}</td>
                         <td><Status status={r.status} /></td>
                         <td><Status status={r.approval} /></td>
-                        <td>{r.note || '—'}</td>
                       </tr>
                     ))}
-                    {!records.length && <tr><td colSpan="4" className="empty">No attendance has been recorded for this month.</td></tr>}
+                    {!records.length && <tr><td colSpan="3" className="empty">No attendance has been recorded for this month.</td></tr>}
                   </tbody>
                 </table>
               )}
@@ -1361,10 +1411,6 @@ function EmployeeDashboard({ user, activePage }) {
               <select value={mark.status} onChange={(e) => setMark({ ...mark, status: e.target.value })}>
                 <option>Present</option><option>Absent</option>
               </select>
-            </label>
-            <label>
-              Note (optional)
-              <input value={mark.note} onChange={(e) => setMark({ ...mark, note: e.target.value })} placeholder="Reason or note" />
             </label>
             <button className="primary">Submit for approval</button>
           </form>

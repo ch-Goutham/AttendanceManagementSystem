@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
+import Attendance from '../models/Attendance.js';
+import Leave from '../models/Leave.js';
+import ResetToken from '../models/ResetToken.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 const router = Router();
 const shape = u => ({ id: u._id, name: u.name, email: u.email, role: u.role, employeeCode: u.employeeCode, department: u.department, isActive: u.isActive });
@@ -56,4 +59,27 @@ router.patch('/:id/password', async (req, res, next) => {
     res.json({ employee: shape(user), message: 'Password reset successfully' });
   } catch (e) { next(e); }
 });
+// Admin permanently deletes an employee account. This is a hard delete: the
+// account and everything that references it (attendance, leave requests and
+// password-reset tokens) are removed. Deactivate someone instead when their
+// history should be kept.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'Account not found' });
+    // Never let the signed-in admin delete their own account.
+    if (String(user._id) === String(req.user._id))
+      return res.status(400).json({ message: 'You cannot delete your own account' });
+    if (user.role !== 'employee')
+      return res.status(400).json({ message: 'Only employee accounts can be deleted' });
+    await Promise.all([
+      Attendance.deleteMany({ employee: user._id }),
+      Leave.deleteMany({ employee: user._id }),
+      ResetToken.deleteMany({ user: user._id })
+    ]);
+    await user.deleteOne();
+    res.json({ message: 'Employee account deleted' });
+  } catch (e) { next(e); }
+});
+
 export default router;
