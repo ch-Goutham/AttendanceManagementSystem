@@ -94,7 +94,7 @@ router.post('/google/login', async (req, res, next) => {
   try {
     const payload = await verifyGoogleCredential(req.body?.credential);
     const user = await User.findOne({ email: payload.email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ message: 'No account found for this Google email. Use the sign-up page first.' });
+    if (!user) return res.status(404).json({ message: 'No account found for this Google email.' });
     if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated' });
     res.json({ token: makeToken(user), user: publicUser(user) });
   } catch (e) { next(e); }

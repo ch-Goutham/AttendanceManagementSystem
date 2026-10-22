@@ -4,9 +4,11 @@ import { ClipboardCheck } from 'lucide-react';
 import api from '../../api';
 import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
+import GoogleSignInButton from '../../components/GoogleSignInButton';
 
 export default function EmployeeLogin({ onAuth }) {
   const [form, setForm] = useState({ email: '', password: '' });
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -18,7 +20,20 @@ export default function EmployeeLogin({ onAuth }) {
     setBusy(true);
     try {
       const { data } = await api.post('/auth/login', form);
-      onAuth(data);
+      onAuth(data, remember);
+    } catch (error) {
+      setError(errMsg(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function googleLogin(credential) {
+    setError('');
+    setBusy(true);
+    try {
+      const { data } = await api.post('/auth/google/login', { credential });
+      onAuth(data, remember);
     } catch (error) {
       setError(errMsg(error));
     } finally {
@@ -38,14 +53,15 @@ export default function EmployeeLogin({ onAuth }) {
 
         <form onSubmit={submit}>
           <label>
-            Email address
+            Email
             <input
               name="email"
               type="email"
               value={form.email}
               onChange={change}
               required
-              placeholder="you@company.com"
+              autoComplete="email"
+              placeholder="Please enter your email"
             />
           </label>
           <label>
@@ -56,20 +72,36 @@ export default function EmployeeLogin({ onAuth }) {
               onChange={change}
               minLength={8}
               required
-              placeholder="Enter your password"
+              autoComplete="current-password"
+              placeholder="Enter password"
             />
           </label>
+
+          <div className="auth-options">
+            <div className="check-inline">
+              <input
+                id="employee-remember-me"
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+              />
+              <label htmlFor="employee-remember-me">Remember me</label>
+            </div>
+            <Link className="auth-link" to="/forgot-password">
+              Forgot password?
+            </Link>
+          </div>
 
           {error && <p className="error">{error}</p>}
 
           <button className="primary full" disabled={busy}>
-            {busy ? 'Signing in...' : 'Sign in'}
+            {busy ? 'Please wait...' : 'Login'}
           </button>
         </form>
 
-        <p className="auth-hint">
-          <Link to="/forgot-password">Forgot password?</Link>
-        </p>
+        <div className="auth-divider" />
+
+        <GoogleSignInButton onCredential={googleLogin} onError={setError} disabled={busy} />
       </div>
     </div>
   );
