@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import ResetToken from '../models/ResetToken.js';
 import { sendResetEmail } from '../utils/mailer.js';
@@ -10,52 +11,123 @@ const router = Router();
 
 const RESET_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const hashToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
+const googleClient = new OAuth2Client();
 
 function makeToken(user) {
   return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
 }
 function publicUser(user) {
-  return { id: user._id, name: user.name, email: user.email, role: user.role,
-    employeeCode: user.employeeCode, department: user.department };
+  return { id: user._id, name: user.name, email: user.email, phone: user.phone || '',
+    role: user.role, employeeCode: user.employeeCode, department: user.department };
 }
-// Whether the very first (bootstrap) admin still needs to be created.
-// Public: it only reveals a boolean, never any account detail.
-router.get('/registration-status', async (_req, res, next) => {
-  try {
-    res.json({ adminExists: Boolean(await User.exists({ role: 'admin' })) });
-  } catch (e) { next(e); }
-});
+function httpError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+// Accepts international formats such as +91 98765 43210, (555) 010-2030 and
+// 9876543210. Requires 7-15 digits after removing spaces and separators.
+function isValidPhone(value) {
+  const phone = String(value || '').trim();
+  if (!/^[+()\d\s-]+$/.test(phone)) return false;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15;
+}
 
-// Admin registration is open ONLY until the first admin exists (bootstrap).
-// After that it is closed forever — additional admins are created by an
-// existing admin via POST /api/employees (role: 'admin'). This is what stops
-// an employee (or anyone) from signing up as an admin.
+// Verifies a Google Identity Services ID token and returns its payload.
+async function verifyGoogleCredential(credential) {
+  if (!process.env.GOOGLE_CLIENT_ID)
+    throw httpError(501, 'Google sign-in is not configured on the server.');
+  if (!credential) throw httpError(400, 'A Google credential is required');
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    payload = ticket.getPayload();
+  } catch {
+    throw httpError(401, 'Google sign-in failed. Please try again.');
+  }
+  if (!payload?.email || !payload.email_verified)
+    throw httpError(401, 'Your Google email address is not verified');
+  return payload;
+}
+
+// Admin self-registration. The route is intentionally unlisted in the client,
+// but open to anyone who knows it. Keep this page private and consider an
+// invite code or disabling it after setup.
 router.post('/register-admin', async (req, res, next) => {
   try {
-    if (await User.exists({ role: 'admin' }))
-      return res.status(403).json({ message: 'Registration is closed. Ask an administrator to create your account.' });
-    const { name, email, password } = req.body;
+    const { name, email, password, acceptTerms } = req.body;
+    const phone = String(req.body?.phone || '').trim();
     if (!name?.trim() || !email?.trim() || !password) return res.status(400).json({ message: 'Name, email and password are required' });
+    if (!phone) return res.status(400).json({ message: 'Phone number is required' });
+    if (!isValidPhone(phone)) return res.status(400).json({ message: 'Enter a valid phone number (7-15 digits)' });
+    if (acceptTerms !== true) return res.status(400).json({ message: 'You must agree to the Terms & Conditions' });
     if (password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
     if (await User.exists({ email: email.toLowerCase().trim() })) return res.status(409).json({ message: 'Email already registered' });
-    const user = await User.create({ name, email, password: await bcrypt.hash(password, 12), role: 'admin' });
+    const user = await User.create({
+      name: name.trim(),
+      email,
+      phone,
+      password: await bcrypt.hash(password, 12),
+      role: 'admin'
+    });
     res.status(201).json({ token: makeToken(user), user: publicUser(user) });
   } catch (e) { next(e); }
 });
+
 router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email: email?.toLowerCase().trim() }).select('+password');
-    if (!user || !user.isActive || !(await bcrypt.compare(password || '', user.password)))
+    if (!user || !user.isActive || !user.password || !(await bcrypt.compare(password || '', user.password)))
       return res.status(401).json({ message: 'Invalid email or password' });
     res.json({ token: makeToken(user), user: publicUser(user) });
   } catch (e) { next(e); }
 });
+
+// Google sign-in for an existing account. Unknown emails are rejected so that
+// a Google account alone can never grant access to the admin console.
+router.post('/google/login', async (req, res, next) => {
+  try {
+    const payload = await verifyGoogleCredential(req.body?.credential);
+    const user = await User.findOne({ email: payload.email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ message: 'No account found for this Google email. Use the sign-up page first.' });
+    if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated' });
+    res.json({ token: makeToken(user), user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
+// Google sign-up creates an admin account once the Terms are accepted.
+router.post('/google/register-admin', async (req, res, next) => {
+  try {
+    const { acceptTerms } = req.body;
+    const phone = String(req.body?.phone || '').trim();
+    if (acceptTerms !== true) return res.status(400).json({ message: 'You must agree to the Terms & Conditions' });
+    if (phone && !isValidPhone(phone)) return res.status(400).json({ message: 'Enter a valid phone number (7-15 digits)' });
+    const payload = await verifyGoogleCredential(req.body?.credential);
+    if (!payload.sub) throw httpError(401, 'Google sign-in failed. Please try again.');
+    const email = payload.email.toLowerCase().trim();
+    if (await User.exists({ email })) return res.status(409).json({ message: 'Email already registered. Log in instead.' });
+    const user = await User.create({
+      name: payload.name?.trim() || email.split('@')[0],
+      email,
+      phone,
+      googleId: payload.sub,
+      role: 'admin'
+    });
+    res.status(201).json({ token: makeToken(user), user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
 router.get('/me', protect, (req, res) => res.json({ user: publicUser(req.user) }));
 
 // Self-service forgot password — available to employees AND admins (both
-// sign in with a password they may lose). Always returns a generic message
-// so account existence is never revealed.
+// sign in with a password they may lose, or a Google account that later needs
+// a local password). Always returns a generic message so account existence is
+// never revealed.
 router.post('/forgot-password', async (req, res, next) => {
   try {
     const email = req.body?.email?.toLowerCase().trim();

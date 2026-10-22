@@ -16,7 +16,7 @@ import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { errMsg, initials, randomPassword } from '../../lib/format';
 
-const EMPTY_FORM = { name: '', email: '', password: '', employeeCode: '', department: '' };
+const EMPTY_FORM = { name: '', email: '', phone: '', password: '', employeeCode: '', department: '' };
 
 export default function Employees({ user }) {
   const notify = useToast();
@@ -121,7 +121,7 @@ export default function Employees({ user }) {
     const term = search.trim().toLowerCase();
     if (!term) return employees;
     return employees.filter((employee) =>
-      [employee.name, employee.email, employee.employeeCode, employee.department, employee.role]
+      [employee.name, employee.email, employee.phone, employee.employeeCode, employee.department, employee.role]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term))
     );
@@ -202,6 +202,7 @@ export default function Employees({ user }) {
             {[
               ['name', 'Full name'],
               ['email', 'Email'],
+              ['phone', 'Phone number'],
               ['password', 'Temporary password'],
               ['employeeCode', 'Employee ID'],
               ['department', 'Department'],
@@ -272,6 +273,7 @@ export default function Employees({ user }) {
                   <th>Role</th>
                   <th>Employee ID</th>
                   <th>Email</th>
+                  <th>Phone</th>
                   <th>Department</th>
                   <th>Account</th>
                   <th className="col-action">Reset</th>
@@ -299,6 +301,7 @@ export default function Employees({ user }) {
                     </td>
                     <td>{employee.employeeCode || '—'}</td>
                     <td>{employee.email}</td>
+                    <td>{employee.phone || '—'}</td>
                     <td>{employee.department || '—'}</td>
                     <td>
                       <Status status={employee.isActive === false ? 'Inactive' : 'Active'} />

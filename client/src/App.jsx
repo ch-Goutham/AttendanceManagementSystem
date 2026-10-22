@@ -5,8 +5,11 @@ import BackendNotice from './components/BackendNotice';
 import Shell from './components/Shell';
 import EmployeeLogin from './pages/auth/EmployeeLogin';
 import AdminLogin from './pages/auth/AdminLogin';
+import AdminSignup from './pages/auth/AdminSignup';
 import ForgotPasswordPage from './pages/auth/ForgotPassword';
 import ResetPasswordPage from './pages/auth/ResetPassword';
+import Terms from './pages/Terms';
+import { clearAuth, readAuth, saveAuth } from './lib/authStorage';
 import Dashboard from './pages/admin/Dashboard';
 import Employees from './pages/admin/Employees';
 import Attendance from './pages/admin/Attendance';
@@ -33,28 +36,20 @@ function EmployeeWorkspace({ user, activePage }) {
 }
 
 function App() {
-  const [auth, setAuth] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('attendance_user') || 'null');
-    } catch {
-      return null;
-    }
-  });
+  const [auth, setAuth] = useState(() => readAuth());
   const [activePage, setActivePage] = useState(() => DEFAULT_PAGE[auth?.role] || 'attendance');
   const navigate = useNavigate();
 
   const signOut = () => {
     const wasAdmin = auth?.role === 'admin';
-    localStorage.removeItem('attendance_token');
-    localStorage.removeItem('attendance_user');
+    clearAuth();
     setAuth(null);
     setActivePage('attendance');
     navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
   };
 
-  const onAuth = (data) => {
-    localStorage.setItem('attendance_token', data.token);
-    localStorage.setItem('attendance_user', JSON.stringify(data.user));
+  const onAuth = (data, remember = true) => {
+    saveAuth(data, remember);
     setAuth(data.user);
     setActivePage(DEFAULT_PAGE[data.user.role] || 'attendance');
     navigate('/');
@@ -72,7 +67,12 @@ function App() {
           path="/admin-login"
           element={auth ? <Navigate to="/" replace /> : <AdminLogin onAuth={onAuth} />}
         />
-        <Route path="/register-admin" element={<Navigate to="/admin-login" replace />} />
+        <Route
+          path="/admin-signup"
+          element={auth ? <Navigate to="/" replace /> : <AdminSignup onAuth={onAuth} />}
+        />
+        <Route path="/register-admin" element={<Navigate to="/admin-signup" replace />} />
+        <Route path="/terms" element={<Terms />} />
         <Route
           path="/forgot-password"
           element={auth ? <Navigate to="/" replace /> : <ForgotPasswordPage />}

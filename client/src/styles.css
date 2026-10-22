@@ -194,3 +194,42 @@ tfoot td{background:#f8fafc;border-top:1px solid #e8edf4;color:#2b3548}
   .backend-notice{left:12px;right:12px;bottom:12px;transform:none;max-width:none;font-size:11.5px;align-items:flex-start;flex-wrap:wrap}
   .backend-notice button{margin-left:42px}
 }
+
+/* ---------------------------------------------------------------------------
+ * Admin sign-up, Google sign-in and legal page
+ * ------------------------------------------------------------------------- */
+.auth-card.auth-card-wide{max-width:460px}
+.auth-divider{height:1px;background:#e8edf4;margin:18px 0}
+.auth-options{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.auth-options .check-inline{font-size:11px;color:#657187;font-weight:600;white-space:nowrap}
+.auth-options .check-inline label{display:block;font-size:11px;font-weight:600;color:#657187;cursor:pointer}
+.auth-options .check-inline input{height:auto;width:15px;accent-color:#198754;cursor:pointer}
+.auth-link{color:#198754;font-weight:700;font-size:11px;text-decoration:none}
+.auth-link:hover{text-decoration:underline}
+.google-btn{width:100%;height:44px;border:1px solid #dfe5ee;border-radius:7px;background:#fff;color:#3c4043;display:flex;align-items:center;justify-content:center;gap:10px;font:600 13px 'DM Sans',sans-serif;cursor:pointer;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease}
+.google-btn:hover:not(:disabled){background:#f8fafc;border-color:#cfd8e3;box-shadow:0 1px 3px #203a5a10}
+.google-btn:disabled{opacity:.55;cursor:not-allowed}
+.google-btn-slot{width:100%;min-height:44px;display:flex;justify-content:center;overflow:hidden}
+.google-btn-slot iframe{max-width:100%}
+.terms-row{display:flex;align-items:flex-start;gap:9px}
+.terms-row input{height:auto;width:15px;accent-color:#198754;margin-top:2px;flex:0 0 auto;cursor:pointer}
+.terms-row label{display:block;font-size:11.5px;font-weight:500;color:#657187;line-height:1.45;cursor:pointer}
+.terms-row a{color:#198754;font-weight:700;text-decoration:none}
+.terms-row a:hover{text-decoration:underline}
+.legal-wrap{place-items:start center;padding:36px 18px;align-content:start}
+.legal-card{width:100%;max-width:760px;background:#fff;border:1px solid #e6ebf1;border-radius:18px;padding:40px 44px 30px;box-shadow:0 20px 65px #2036500c}
+.legal-card .eyebrow{text-align:center;color:#25845b;margin:0 0 9px}
+.legal-card h1{text-align:center;font:800 26px Manrope,sans-serif;letter-spacing:-.6px;margin:0 0 7px}
+.legal-updated{text-align:center;font-size:11.5px;margin-bottom:24px}
+.legal-body{color:#4d5a6f;font-size:13px;line-height:1.7}
+.legal-body h2{font:700 14.5px Manrope,sans-serif;color:#1c2638;margin:22px 0 8px}
+.legal-body p{margin:0 0 12px}
+.legal-body ul{margin:0 0 12px;padding-left:20px}
+.legal-body li{margin-bottom:6px}
+.legal-note{background:#f7f9fc;border:1px dashed #e6ecf5;border-radius:9px;padding:11px 13px;font-size:11.5px;color:#8a94a6;margin-top:22px}
+.legal-card .auth-foot a{display:inline-flex;align-items:center;gap:6px}
+@media(max-width:720px){
+  .legal-wrap{padding:18px 12px}
+  .legal-card{padding:28px 21px 22px}
+  .legal-card h1{font-size:23px}
+}

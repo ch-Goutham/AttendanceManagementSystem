@@ -1,38 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
 import api from '../../api';
 import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
+import GoogleSignInButton from '../../components/GoogleSignInButton';
 
 export default function AdminLogin({ onAuth }) {
-  const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [adminExists, setAdminExists] = useState(true);
-  const [statusLoaded, setStatusLoaded] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .get('/auth/registration-status')
-      .then(({ data }) => {
-        if (!alive) return;
-        const exists = Boolean(data.adminExists);
-        setAdminExists(exists);
-        setStatusLoaded(true);
-        if (!exists) setMode('register');
-      })
-      .catch(() => {
-        if (!alive) return;
-        setAdminExists(true);
-        setStatusLoaded(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const change = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
@@ -41,22 +19,27 @@ export default function AdminLogin({ onAuth }) {
     setError('');
     setBusy(true);
     try {
-      const register = mode === 'register';
-      const payload = register ? form : { email: form.email, password: form.password };
-      const { data } = await api.post(register ? '/auth/register-admin' : '/auth/login', payload);
-      onAuth(data);
+      const { data } = await api.post('/auth/login', form);
+      onAuth(data, remember);
     } catch (error) {
       setError(errMsg(error));
-      if (error.response?.status === 403) {
-        setAdminExists(true);
-        setMode('login');
-      }
     } finally {
       setBusy(false);
     }
   }
 
-  const canRegister = statusLoaded && !adminExists;
+  async function googleLogin(credential) {
+    setError('');
+    setBusy(true);
+    try {
+      const { data } = await api.post('/auth/google/login', { credential });
+      onAuth(data, remember);
+    } catch (error) {
+      setError(errMsg(error));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="auth-wrap">
@@ -65,64 +48,20 @@ export default function AdminLogin({ onAuth }) {
           <ShieldCheck size={25} />
         </div>
         <p className="eyebrow">ADMIN CONSOLE</p>
-        <h1>{mode === 'register' ? 'Create admin account' : 'Administrator sign in'}</h1>
-        <p className="muted">
-          {mode === 'register'
-            ? 'Set up the administrator for your company workspace.'
-            : 'Sign in to manage employees, attendance and leave.'}
-        </p>
-
-        {canRegister && (
-          <div className="auth-tabs" role="tablist" aria-label="Admin access">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'login'}
-              className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('login');
-                setError('');
-              }}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'register'}
-              className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('register');
-                setError('');
-              }}
-            >
-              Register
-            </button>
-          </div>
-        )}
+        <h1>Administrator sign in</h1>
+        <p className="muted">Sign in to manage employees, attendance and leave.</p>
 
         <form onSubmit={submit}>
-          {mode === 'register' && (
-            <label>
-              Full name
-              <input
-                name="name"
-                value={form.name}
-                onChange={change}
-                required
-                placeholder="Your name"
-              />
-            </label>
-          )}
           <label>
-            Email address
+            Email
             <input
               name="email"
               type="email"
               value={form.email}
               onChange={change}
               required
-              placeholder="you@company.com"
+              autoComplete="email"
+              placeholder="Please enter your email"
             />
           </label>
           <label>
@@ -133,28 +72,36 @@ export default function AdminLogin({ onAuth }) {
               onChange={change}
               minLength={8}
               required
-              placeholder="At least 8 characters"
+              autoComplete="current-password"
+              placeholder="Enter password"
             />
           </label>
 
+          <div className="auth-options">
+            <div className="check-inline">
+              <input
+                id="remember-me"
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+              />
+              <label htmlFor="remember-me">Remember me</label>
+            </div>
+            <Link className="auth-link" to="/forgot-password?from=admin">
+              Forgot password?
+            </Link>
+          </div>
+
           {error && <p className="error">{error}</p>}
 
-          <button className="primary full" disabled={busy || (mode === 'register' && !statusLoaded)}>
-            {busy
-              ? 'Please wait...'
-              : mode === 'register'
-                ? 'Create admin account'
-                : 'Sign in'}
+          <button className="primary full" disabled={busy}>
+            {busy ? 'Please wait...' : 'Login'}
           </button>
         </form>
 
-        <p className="auth-hint">
-          <Link to="/forgot-password?from=admin">Forgot password?</Link>
-        </p>
+        <div className="auth-divider" />
 
-        <p className="auth-foot">
-          <Link to="/login">Employee sign in</Link>
-        </p>
+        <GoogleSignInButton onCredential={googleLogin} onError={setError} disabled={busy} />
       </div>
     </div>
   );
