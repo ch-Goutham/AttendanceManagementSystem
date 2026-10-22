@@ -149,5 +149,49 @@ Open the app and choose **Admin Register**. Admin registration is open only unti
 - `GET /api/reports/attendance.xlsx?month=YYYY-MM&employeeId=` — Excel download
 - `GET /api/reports/attendance.pdf?month=YYYY-MM&employeeId=` — PDF download
 
+## Deployment
+
+The frontend and API are hosted separately. The browser talks to the API directly, so both sides need to know about each other.
+
+### Frontend (Vercel)
+
+Set the project **Root Directory** to `client`, with build command `npm run build` and output directory `dist`.
+
+Add one environment variable in **Project → Settings → Environment Variables**:
+
+```env
+VITE_API_URL=https://<your-render-service>.onrender.com/api
+```
+
+Vite bakes this value into the build, so change it before building, not after.
+
+`client/vercel.json` contains the single-page-app rewrite:
+
+```json
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+```
+
+Routes such as `/admin-login`, `/login`, `/reset-password` and `/employee` exist only in the browser (React Router with `BrowserRouter`). Without that rewrite, Vercel looks for a matching file, finds none and returns its own `404 NOT_FOUND` page before React can load. Existing files (`/assets/*`) are still served first, so the catch-all only affects unknown paths.
+
+If the Vercel Root Directory is the repository root instead of `client`, move `vercel.json` to the repository root and set the output directory to `client/dist`; a config file inside `client/` is ignored in that setup.
+
+### Backend (Render)
+
+Root directory `server`, build command `npm install`, start command `npm start`.
+
+Environment variables:
+
+```env
+MONGO_URI=<MongoDB Atlas connection string>
+JWT_SECRET=<long random string>
+CLIENT_URL=https://client-ams.vercel.app
+```
+
+Do not set `PORT` on Render; the platform injects it and the server already reads `process.env.PORT`. Also configure the optional SMTP and shift variables from `server/.env.example` if password-reset email or non-default attendance rules are needed.
+
+`CLIENT_URL` is the only origin allowed by CORS besides `http://localhost:5173`. If the frontend domain changes, update it and redeploy; otherwise every login and API call fails with a CORS error.
+
+Health check: `GET /api/health` returns `{"status":"ok"}`.
+
 ## Notes before production
 Add email verification, audit logs, rate limiting, CSRF strategy if moving away from bearer tokens, stricter admin registration, backups, and a company-specific holiday policy. Times are company-local wall-clock values; staff in other timezones would need per-employee timezone support. Password resets are admin-driven with an email fallback. This is a starter application, not a production security audit.
