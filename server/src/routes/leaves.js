@@ -14,6 +14,9 @@ const shape = l => ({
   status: l.status,
   reviewNote: l.reviewNote,
   reviewedAt: l.reviewedAt,
+  reviewer: l.reviewedBy && l.reviewedBy.name
+    ? { id: String(l.reviewedBy._id), name: l.reviewedBy.name }
+    : null,
   createdAt: l.createdAt,
   employee: l.employee
     ? { id: l.employee._id, name: l.employee.name, email: l.employee.email, employeeCode: l.employee.employeeCode, department: l.employee.department }
@@ -63,6 +66,7 @@ router.get('/', async (req, res, next) => {
     if (req.query.status) query.status = req.query.status;
     const leaves = await Leave.find(query)
       .populate('employee', 'name email employeeCode department')
+      .populate('reviewedBy', 'name')
       .sort({ createdAt: -1 });
     res.json({ leaves: leaves.map(shape) });
   } catch (e) { next(e); }
@@ -98,12 +102,13 @@ router.patch('/:id/review', adminOnly, async (req, res, next) => {
       for (const date of eachDate(leave.startDate, leave.endDate)) {
         await Attendance.findOneAndUpdate(
           { employee: leave.employee._id, date },
-          { $set: { status: 'Leave', note: `Leave: ${leave.reason}`, source: 'admin', approval: 'confirmed', markedBy: req.user._id } },
+          { $set: { status: 'Leave', note: `Leave: ${leave.reason}`, checkIn: '', checkOut: '', dayType: '', source: 'admin', approval: 'confirmed', markedBy: req.user._id } },
           { new: true, upsert: true, runValidators: true }
         );
       }
     }
     await leave.save();
+    await leave.populate('reviewedBy', 'name');
     res.json({ leave: shape(leave) });
   } catch (e) { next(e); }
 });

@@ -6,6 +6,8 @@ import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import leaveRoutes from './routes/leaves.js';
+import dashboardRoutes from './routes/dashboard.js';
+import reportRoutes from './routes/reports.js';
 
 dotenv.config();
 
@@ -17,7 +19,8 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 app.use(cors({
-  origin: allowedOrigins
+  origin: allowedOrigins,
+  exposedHeaders: ['Content-Disposition']
 }));
 
 app.use(express.json());
@@ -30,6 +33,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leaves', leaveRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

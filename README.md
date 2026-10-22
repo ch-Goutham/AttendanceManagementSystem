@@ -1,71 +1,153 @@
 # Company Attendance Management System (MERN)
 
-A full-stack starter project using MongoDB, Express, React, and Node.js.
+A full-stack attendance and leave application built with MongoDB, Express, React, and Node.js.
 
 ## Features
-- Admin registration and login (JWT authentication)
-- **Separate role-based screens**: `/admin` (admins only) and `/employee` (employees only), guarded on both client and server
-- Admin dashboard: create employees, view employee list, mark attendance for anyone
-- **Admin leave management**: view the whole team's leave requests and approve/reject them
-- **Admin resets an employee's password** to a new temporary value (no self-service reset; employees ask their admin)
-- **Leave workflow**: employees apply for leave (date range + reason); approved ranges are recorded as `Leave` in attendance
-- **Employee self-marking**: employees mark their own day as Present or Absent
-- Employee dashboard: personal calendar, all-month attendance history, apply for/track leave
-- Attendance statuses: Present, Absent, Leave
-- Monthly calendar: green = Present, red = Absent, amber = Leave
-- Present/absent/leave counts and attendance percentage
-- **Show/hide password toggle** on every password field
-- Role-based API access and password hashing
-- Attendance is unique per employee per date
+
+### Admin console (5 sections)
+- **Dashboard** — total employees, present today, absent today, on leave today, late arrivals, unmarked accounts and pending self-marks.
+- **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees.
+- **Attendance** — check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, filters, and corrections.
+- **Leave Management** — pending/approved/rejected tabs, employee filter, leave history, approve/reject with attendance stamping.
+- **Reports** — monthly team report or individual employee report, with Excel (`.xlsx`) and PDF downloads.
+
+### Employee workspace
+- Check in and check out for today; times are auto-captured and confirmed by an admin.
+- Self-mark a missed day as Present or Absent (pending admin approval).
+- Personal attendance calendar and monthly history, including check-in/out times.
+- Apply for leave, track status, and withdraw a pending request.
+
+### Access rules
+- Admins can view and manage all employees' attendance and leave.
+- Employees can only view and change their own attendance and leave.
+- Employee accounts cannot reach the Admin Screen (`/admin` redirects, and every admin API is protected).
+- Admins create employee credentials; there is no public employee sign-up.
+- Admin self-registration is open only until the first admin exists.
+
+### Attendance rules
+- One global shift, configured in `server/.env`:
+  - `SHIFT_START` / `SHIFT_END` (default `09:30`–`18:00`)
+  - `GRACE_MINUTES` (default `10`): late = check-in after shift start + grace
+  - `HALF_DAY_MINUTES` (default `240`): worked time below this becomes a half day
+  - `WORKING_DAYS` (default `1,2,3,4,5,6` = Monday–Saturday, `0` = Sunday)
+- Admins can override the day type when correcting a record.
+- Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
+- Times are stored as company-local `HH:mm` alongside the `YYYY-MM-DD` date, so there is no timezone date drift.
 
 ## Requirements
 - Node.js 18+
 - MongoDB local instance or MongoDB Atlas connection string
 
-## Run locally
+## Quick start (recommended)
 
-### 1. Backend
+From the project root:
+
+```bash
+npm install          # installs the dev runner (concurrently)
+npm run install:all  # installs server and client dependencies once
+```
+
+Copy `server/.env.example` to `server/.env` and set `MONGO_URI` and `JWT_SECRET`.
+
+Then start both apps with one command:
+
+```bash
+npm run dev
+```
+
+- API: `http://localhost:5000`
+- Web: `http://localhost:5173`
+
+The browser calls `/api` on port 5173 and Vite proxies it to port 5000, so the two servers stay same-origin in development. The API must still be running for data and downloads.
+
+Stop any existing frontend/backend terminals before using `npm run dev`, since ports 5173 and 5000 must be free.
+
+### Optional client configuration
+
+Create `client/.env` only if the defaults do not fit:
+
+```env
+# Where the Vite dev/preview proxy sends /api requests
+VITE_PROXY_TARGET=http://localhost:5000
+
+# For a production build hosted separately from the API
+VITE_API_URL=http://localhost:5000/api
+```
+
+### Run separately
+
+Backend:
 ```bash
 cd server
-cp .env.example .env
-# Set MONGO_URI and JWT_SECRET in .env
 npm install
 npm run dev
 ```
-Backend runs on `http://localhost:5000`.
 
-### 2. Frontend
-In another terminal:
+Frontend, in another terminal:
 ```bash
 cd client
 npm install
 npm run dev
 ```
-Frontend runs on `http://localhost:5173`.
+
+## Troubleshooting: "Network Error" or ERR_CONNECTION_REFUSED
+
+This means the browser could not reach the backend; it is not an Excel/PDF generation failure.
+
+1. Make sure the API is running:
+   ```bash
+   npm run dev
+   ```
+   or `cd server && npm run dev`.
+2. Confirm health:
+   ```text
+   http://localhost:5000/api/health
+   ```
+   It must return `{"status":"ok"}`.
+3. The app shows a **Backend not reachable** banner with a **Retry** button when the API is down. Report downloads are disabled until the report preview loads, and a failed preview offers **Retry**.
+4. If port 5000 or 5173 is already in use, stop the old process before starting again.
 
 ## First admin
-Open the app and choose **Admin Register**. Admin registration is open in this starter build. For production, disable public admin registration after creating the first admin or add an invite/secret-code flow.
+Open the app and choose **Admin Register**. Admin registration is open only until the first admin exists. After that, admins create additional accounts from **Employees**.
 
 ## API overview
-- `POST /api/auth/register-admin` — create an admin
+
+### Auth
+- `POST /api/auth/register-admin` — create the first admin (closed afterwards)
 - `POST /api/auth/login` — admin or employee login
 - `GET /api/auth/me` — current user
-- `POST /api/employees` — admin creates an employee account
-- `GET /api/employees` — admin lists employees
-- `PATCH /api/employees/:id/status` — admin activates/deactivates an employee
-- `PATCH /api/employees/:id/password` — admin resets an employee's password (≥ 8 chars)
-- `DELETE /api/employees/:id` — admin permanently deletes an employee (and their attendance/leave records); employees only, never your own account
-- `GET /api/attendance` — admin attendance records (all or `employeeId`); employee gets own records only
-- `POST /api/attendance` — admin marks any employee (Present/Absent/Leave); **employee marks only their own day as Present/Absent**
-- `GET /api/attendance/summary?month=YYYY-MM` — attendance counts/percentage
-- `GET /api/attendance/calendar?month=YYYY-MM` — calendar records for logged-in employee
-- `POST /api/leaves` — employee applies for leave (`startDate`, `endDate`, `reason`)
-- `GET /api/leaves` — employee: own requests; admin: all requests (optional `employeeId`, `status` filters)
-- `PATCH /api/leaves/:id/review` — admin approves/rejects (`action: 'approve'|'reject'`); approving writes `Leave` into attendance for every date in range
+- `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — password reset flow
+
+### Employees (admin only)
+- `POST /api/employees` — create an employee account and login credentials
+- `GET /api/employees` — list employees and admins
+- `PATCH /api/employees/:id/status` — activate/deactivate
+- `PATCH /api/employees/:id/password` — reset a password (≥ 8 chars)
+- `DELETE /api/employees/:id` — permanently delete an employee and their records
+
+### Attendance
+- `GET /api/attendance` — records; admin can filter by `employeeId`, `month`, `date`, `from`, `to`, `status`, `approval`, `late=true`; employees are always scoped to their own records
+- `GET /api/attendance/summary?month=YYYY-MM` — present/absent/leave/half-day/late counts and attendance percentage
+- `GET /api/attendance/calendar?month=YYYY-MM` — calendar records for the signed-in employee
+- `GET /api/attendance/today` — the signed-in employee's record for today
+- `GET /api/attendance/config` — shift, grace, half-day and working-day rules
+- `POST /api/attendance` — admin marks any employee; employees mark only themselves (Present/Absent, pending approval)
+- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee self check-in/out for today
+- `PATCH /api/attendance/:id` — **admin** corrects status, times, day type or note
+- `GET /api/attendance/pending` — **admin** queue of self-marks awaiting approval
+- `PATCH /api/attendance/:id/review` — **admin** confirms/rejects a self-mark
+
+### Leave
+- `POST /api/leaves` — employee applies for leave
+- `GET /api/leaves` — employee: own requests; admin: all requests (`employeeId`, `status` filters)
+- `PATCH /api/leaves/:id/review` — admin approves/rejects; approving writes `Leave` into attendance for every date in the range
 - `DELETE /api/leaves/:id` — employee withdraws their own pending request
 
-## Attendance percentage
-`Present days / (Present days + Absent days) * 100`. Leave days are excluded from the denominator. If there are no present/absent records, percentage is 0%.
+### Dashboard and reports (admin only)
+- `GET /api/dashboard` — today's headline numbers and shift rules
+- `GET /api/reports/attendance?month=YYYY-MM&employeeId=` — JSON report preview
+- `GET /api/reports/attendance.xlsx?month=YYYY-MM&employeeId=` — Excel download
+- `GET /api/reports/attendance.pdf?month=YYYY-MM&employeeId=` — PDF download
 
 ## Notes before production
-Add email verification, audit logs, rate limiting, CSRF strategy if moving away from bearer tokens, stricter admin registration, backups, and a company-specific holiday/weekend policy. Password resets are intentionally admin-driven (no self-service / email flow). This is a starter application, not a production security audit.
+Add email verification, audit logs, rate limiting, CSRF strategy if moving away from bearer tokens, stricter admin registration, backups, and a company-specific holiday policy. Times are company-local wall-clock values; staff in other timezones would need per-employee timezone support. Password resets are admin-driven with an email fallback. This is a starter application, not a production security audit.
