@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { UserRound, RefreshCw } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
-import ConfirmDialog from '../../components/ConfirmDialog';
 import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { daysBetween, formatDate } from '../../lib/dates';
@@ -16,8 +15,6 @@ export default function ApplyLeave() {
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
 
   async function loadLeaves() {
     setLoading(true);
@@ -50,28 +47,8 @@ export default function ApplyLeave() {
     }
   }
 
-  async function withdraw(id) {
-    try {
-      await api.delete(`/leaves/${id}`);
-      notify('success', 'Leave request withdrawn.');
-      await loadLeaves();
-    } catch (error) {
-      notify('error', errMsg(error));
-    }
-  }
-
-  async function runConfirm() {
-    if (!confirm?.onConfirm) return;
-    setConfirmBusy(true);
-    try {
-      await confirm.onConfirm();
-    } finally {
-      setConfirmBusy(false);
-      setConfirm(null);
-    }
-  }
-
   const pendingCount = leaves.filter((leave) => leave.status === 'Pending').length;
+  const totalDays = daysBetween(leaveForm.startDate, leaveForm.endDate);
 
   return (
     <div className="page-content">
@@ -108,10 +85,15 @@ export default function ApplyLeave() {
             <input
               type="date"
               required
+              min={leaveForm.startDate || undefined}
               value={leaveForm.endDate}
               onChange={(event) => setLeaveForm({ ...leaveForm, endDate: event.target.value })}
             />
           </label>
+          <div className="duration-preview">
+            <span>Total leave days</span>
+            <b>{totalDays ? `${totalDays} day${totalDays === 1 ? '' : 's'}` : '—'}</b>
+          </div>
           <label>
             Reason
             <input
@@ -150,7 +132,6 @@ export default function ApplyLeave() {
                   <th>Reason</th>
                   <th>Status</th>
                   <th>Reviewed by</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -158,7 +139,7 @@ export default function ApplyLeave() {
                   <tr key={leave.id}>
                     <td>{formatDate(leave.startDate)}</td>
                     <td>{formatDate(leave.endDate)}</td>
-                    <td>{daysBetween(leave.startDate, leave.endDate)}</td>
+                    <td>{leave.days ?? daysBetween(leave.startDate, leave.endDate)}</td>
                     <td className="reason-cell" title={leave.reason}>
                       {leave.reason}
                     </td>
@@ -169,33 +150,11 @@ export default function ApplyLeave() {
                       {leave.reviewer?.name || '—'}
                       {leave.reviewNote && <small className="cell-note">{leave.reviewNote}</small>}
                     </td>
-                    <td>
-                      {leave.status === 'Pending' ? (
-                        <button
-                          className="link-btn danger-text"
-                          onClick={() =>
-                            setConfirm({
-                              title: 'Withdraw leave request?',
-                              message: `Your request from ${formatDate(leave.startDate)} to ${formatDate(
-                                leave.endDate
-                              )} will be removed.`,
-                              confirmLabel: 'Withdraw',
-                              danger: true,
-                              onConfirm: () => withdraw(leave.id),
-                            })
-                          }
-                        >
-                          Withdraw
-                        </button>
-                      ) : (
-                        <span className="muted small-text">—</span>
-                      )}
-                    </td>
                   </tr>
                 ))}
                 {!leaves.length && (
                   <tr>
-                    <td colSpan="7" className="empty">
+                    <td colSpan="6" className="empty">
                       You have not applied for any leave yet.
                     </td>
                   </tr>
@@ -209,17 +168,6 @@ export default function ApplyLeave() {
       <div className="muted small-text leave-hint">
         <UserRound size={14} /> Leave days are excluded from your attendance percentage.
       </div>
-
-      <ConfirmDialog
-        open={!!confirm}
-        title={confirm?.title}
-        message={confirm?.message}
-        confirmLabel={confirm?.confirmLabel}
-        danger={confirm?.danger}
-        busy={confirmBusy}
-        onConfirm={runConfirm}
-        onCancel={() => setConfirm(null)}
-      />
     </div>
   );
 }

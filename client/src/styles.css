@@ -6,6 +6,11 @@
 .password-field input{width:100%;padding-right:36px}
 .eye-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:grid;place-items:center;border:0;background:transparent;color:#8a96a9;padding:5px;border-radius:6px;line-height:0}
 .eye-btn:hover{color:#198754;background:#eaf7ef}
+.password-checklist{display:grid;gap:4px;margin-top:7px;font-size:11px;line-height:1.35;color:#98a2b2}
+.password-rule{display:flex;align-items:center;gap:5px}
+.password-rule svg{flex:none;color:#b4becd}
+.password-rule.met{color:#178653}
+.password-rule.met svg{color:#178653}
 .auth-hint{text-align:center;font-size:11px;color:#98a2b2;margin:16px 0 0}
 .status-pending{color:#98680c;background:#fff3d6}
 .status-approved{color:#177b48;background:#e5f7ec}
@@ -165,6 +170,18 @@
 .percent-pill.bad{color:#c33b42;background:#ffebec}
 tfoot td{background:#f8fafc;border-top:1px solid #e8edf4;color:#2b3548}
 .leave-hint{display:flex;align-items:center;gap:7px;margin-top:-4px}
+.duration-preview{display:flex;flex-direction:column;gap:7px;font-size:11px;color:#657187;font-weight:600;min-width:0}
+.duration-preview b{height:40px;display:flex;align-items:center;padding:0 11px;border:1px dashed #cfe0d6;background:#f4fbf7;border-radius:7px;color:#177b48;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.permission-form .permission-reason{grid-column:span 2}
+.time-strip small{font-size:10px;color:#98a2b2;white-space:nowrap}
+.late-reason-box{margin-top:16px;padding:14px 16px;background:#fff8e8;border:1px solid #f1dfb5;border-radius:10px}
+.late-reason-title{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12px;color:#8a5b05;margin:0 0 4px}
+.late-reason-form{display:flex;gap:9px;flex-wrap:wrap;margin-top:11px}
+.late-reason-form input{flex:1;min-width:220px;height:40px;border:1px solid #e5d6b4;border-radius:7px;background:#fff;padding:0 11px;color:#253149;outline:none}
+.late-reason-form input:focus{border-color:#d9a83c;box-shadow:0 0 0 3px #d9a83c1f}
+.late-reason-form .primary{height:40px}
+.late-reason-saved{font-size:11px;color:#68758a;margin:10px 0 0}
+@media(max-width:720px){.permission-form .permission-reason{grid-column:auto}.late-reason-form input{min-width:0;width:100%}.late-reason-form .primary{width:100%}}
 @media(max-width:1250px){.stats-grid.stats-five{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1100px){.dashboard-grid{grid-template-columns:1fr}.time-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:720px){

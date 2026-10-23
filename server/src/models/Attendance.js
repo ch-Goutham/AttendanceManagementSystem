@@ -7,6 +7,13 @@ const attendanceSchema = new mongoose.Schema({
   // convention above. Derived facts (late/early/hours) are never stored.
   checkIn: { type: String, default: '' },
   checkOut: { type: String, default: '' },
+  // Exact server timestamps captured by the check-in/out buttons. The HH:mm
+  // fields above are for display and admin edits; these keep the full instant
+  // (including seconds) so the original event is never rounded away.
+  checkInAt: { type: Date, default: null },
+  checkOutAt: { type: Date, default: null },
+  // Optional explanation supplied by the employee when they arrive late.
+  lateReason: { type: String, trim: true, default: '' },
   // Empty means "not decided yet"; the server derives Full day / Half day from
   // worked hours whenever times are written. An admin edit can set it directly.
   dayType: { type: String, enum: ['Full day', 'Half day', ''], default: '' },

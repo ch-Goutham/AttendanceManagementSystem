@@ -19,7 +19,11 @@ export default function EmployeeLogin({ onAuth }) {
     setError('');
     setBusy(true);
     try {
-      const { data } = await api.post('/auth/login', form);
+      const { data } = await api.post('/auth/login', { ...form, portal: 'employee' });
+      if (data.user?.role !== 'employee') {
+        setError('This is an admin account. Please use the admin login page.');
+        return;
+      }
       onAuth(data, remember);
     } catch (error) {
       setError(errMsg(error));
@@ -32,7 +36,11 @@ export default function EmployeeLogin({ onAuth }) {
     setError('');
     setBusy(true);
     try {
-      const { data } = await api.post('/auth/google/login', { credential });
+      const { data } = await api.post('/auth/google/login', { credential, portal: 'employee' });
+      if (data.user?.role !== 'employee') {
+        setError('This is an admin account. Please use the admin login page.');
+        return;
+      }
       onAuth(data, remember);
     } catch (error) {
       setError(errMsg(error));

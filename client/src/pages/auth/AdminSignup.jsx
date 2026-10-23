@@ -4,9 +4,11 @@ import { ShieldCheck } from 'lucide-react';
 import api from '../../api';
 import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
+import PasswordChecklist from '../../components/PasswordChecklist';
 import GoogleSignInButton from '../../components/GoogleSignInButton';
+import { passwordError } from '../../lib/password';
 
-const EMPTY_FORM = { name: '', phone: '', email: '', password: '', confirmPassword: '' };
+const EMPTY_FORM = { name: '', email: '', password: '', confirmPassword: '' };
 
 // This route is intentionally not linked from anywhere in the app. Admins
 // reach it by typing /admin-signup directly.
@@ -29,11 +31,15 @@ export default function AdminSignup({ onAuth }) {
       setError('You must agree to all the Terms & Conditions');
       return;
     }
+    const passwordIssue = passwordError(form.password);
+    if (passwordIssue) {
+      setError(passwordIssue);
+      return;
+    }
     setBusy(true);
     try {
       const { data } = await api.post('/auth/register-admin', {
         name: form.name,
-        phone: form.phone,
         email: form.email,
         password: form.password,
         acceptTerms
@@ -56,7 +62,6 @@ export default function AdminSignup({ onAuth }) {
     try {
       const { data } = await api.post('/auth/google/register-admin', {
         credential,
-        phone: form.phone,
         acceptTerms
       });
       onAuth(data, true);
@@ -90,20 +95,6 @@ export default function AdminSignup({ onAuth }) {
             />
           </label>
           <label>
-            Phone Number
-            <input
-              name="phone"
-              type="tel"
-              value={form.phone}
-              onChange={change}
-              required
-              autoComplete="tel"
-              pattern="[+()0-9\s-]{7,25}"
-              title="Enter 7-15 digits. Spaces, dashes, parentheses and + are allowed."
-              placeholder="Please enter your phone number"
-            />
-          </label>
-          <label>
             Email
             <input
               name="email"
@@ -122,10 +113,12 @@ export default function AdminSignup({ onAuth }) {
               value={form.password}
               onChange={change}
               minLength={8}
+              maxLength={72}
               required
               autoComplete="new-password"
               placeholder="Enter password"
             />
+            <PasswordChecklist value={form.password} />
           </label>
           <label>
             Confirm Password
@@ -134,6 +127,7 @@ export default function AdminSignup({ onAuth }) {
               value={form.confirmPassword}
               onChange={change}
               minLength={8}
+              maxLength={72}
               required
               autoComplete="new-password"
               placeholder="Enter confirm password"

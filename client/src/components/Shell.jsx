@@ -9,6 +9,7 @@ import {
   BarChart3,
   LayoutDashboard,
   X,
+  FileText,
 } from 'lucide-react';
 import { initials } from '../lib/format';
 
@@ -21,9 +22,10 @@ const ADMIN_NAV = [
 ];
 
 const EMPLOYEE_NAV = [
-  { key: 'attendance', label: 'My attendance', icon: <CalendarDays size={18} /> },
-  { key: 'mark', label: 'Mark attendance', icon: <ClipboardCheck size={18} /> },
-  { key: 'leave', label: 'Apply leave', icon: <UserRound size={18} /> },
+  { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+  { key: 'mark', label: 'Mark Attendance', icon: <ClipboardCheck size={18} /> },
+  { key: 'permission', label: 'Permission', icon: <FileText size={18} /> },
+  { key: 'leave', label: 'Apply Leave', icon: <UserRound size={18} /> },
 ];
 
 const PAGE_TITLES = {
@@ -35,9 +37,10 @@ const PAGE_TITLES = {
     reports: 'Reports',
   },
   employee: {
-    attendance: 'My attendance',
-    mark: 'Mark attendance',
-    leave: 'Apply leave',
+    dashboard: 'Dashboard',
+    mark: 'Mark Attendance',
+    permission: 'Permission',
+    leave: 'Apply Leave',
   },
 };
 

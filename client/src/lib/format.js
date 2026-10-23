@@ -1,5 +1,8 @@
-export const BACKEND_DOWN_MESSAGE =
-  'Cannot reach the backend server. Start it with "npm run dev" in the project root, or run "cd server && npm run dev".';
+import { PASSWORD_MIN_LENGTH } from './password';
+
+export const BACKEND_DOWN_MESSAGE = import.meta.env.DEV
+  ? 'Cannot reach the backend server. Start it with "npm run dev" in the project root, or run "cd server && npm run dev".'
+  : 'Cannot reach the server right now. Please retry in a moment.';
 
 export function isBackendUnreachable(error) {
   if (!error) return false;
@@ -32,11 +35,25 @@ export const errMsg = (error) => {
   return error?.message || 'Something went wrong. Please try again.';
 };
 
-export function randomPassword(length = 10) {
-  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < length; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
+export function randomPassword(length = 12) {
+  const lower = 'abcdefghijkmnpqrstuvwxyz';
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const numbers = '23456789';
+  const symbols = '!@#$%^&*';
+  const all = lower + upper + numbers + symbols;
+  const size = Math.max(PASSWORD_MIN_LENGTH, length);
+  const chars = [
+    lower[Math.floor(Math.random() * lower.length)],
+    upper[Math.floor(Math.random() * upper.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    symbols[Math.floor(Math.random() * symbols.length)]
+  ];
+  while (chars.length < size) chars.push(all[Math.floor(Math.random() * all.length)]);
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 export const initials = (name) => (name ? name.trim().charAt(0).toUpperCase() : 'E');

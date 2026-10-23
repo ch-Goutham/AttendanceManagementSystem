@@ -1,23 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, X, RefreshCw, History, CalendarDays } from 'lucide-react';
+import { Check, X, RefreshCw, History } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
-import { daysBetween, formatDate } from '../../lib/dates';
+import { formatDate, formatTime } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
 
-const TABS = [
+const STATUS_TABS = [
   { key: '', label: 'All requests' },
   { key: 'Pending', label: 'Pending' },
   { key: 'Approved', label: 'Approved' },
   { key: 'Rejected', label: 'Rejected' },
 ];
 
-export default function LeaveManagement({ onNavigate }) {
+export default function LeaveManagement() {
   const notify = useToast();
+  const [view, setView] = useState('leaves');
   const [leaves, setLeaves] = useState([]);
+  const [permissions, setPermissions] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusTab, setStatusTab] = useState('');
@@ -25,7 +27,9 @@ export default function LeaveManagement({ onNavigate }) {
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  const askConfirm = (options) => setConfirm(options);
+  const isLeaves = view === 'leaves';
+  const rows = isLeaves ? leaves : permissions;
+
   async function runConfirm() {
     if (!confirm?.onConfirm) return;
     setConfirmBusy(true);
@@ -40,11 +44,13 @@ export default function LeaveManagement({ onNavigate }) {
   async function load() {
     setLoading(true);
     try {
-      const [leavesResponse, employeesResponse] = await Promise.all([
+      const [leavesResponse, permissionsResponse, employeesResponse] = await Promise.all([
         api.get('/leaves'),
+        api.get('/permissions'),
         api.get('/employees'),
       ]);
       setLeaves(leavesResponse.data.leaves || []);
+      setPermissions(permissionsResponse.data.permissions || []);
       setEmployees(
         (employeesResponse.data.employees || []).filter((employee) => employee.role === 'employee')
       );
@@ -59,10 +65,15 @@ export default function LeaveManagement({ onNavigate }) {
     load();
   }, []);
 
-  async function review(id, action) {
+  async function review(type, id, action) {
     try {
-      await api.patch(`/leaves/${id}/review`, { action });
-      notify('success', `Leave ${action === 'approve' ? 'approved' : 'rejected'}.`);
+      await api.patch(`/${type}/${id}/review`, { action });
+      notify(
+        'success',
+        `${type === 'leaves' ? 'Leave' : 'Permission'} ${
+          action === 'approve' ? 'approved' : 'rejected'
+        }.`
+      );
       await load();
     } catch (error) {
       notify('error', errMsg(error));
@@ -71,25 +82,32 @@ export default function LeaveManagement({ onNavigate }) {
 
   const counts = useMemo(
     () => ({
-      Pending: leaves.filter((leave) => leave.status === 'Pending').length,
-      Approved: leaves.filter((leave) => leave.status === 'Approved').length,
-      Rejected: leaves.filter((leave) => leave.status === 'Rejected').length,
-      total: leaves.length,
+      Pending: rows.filter((row) => row.status === 'Pending').length,
+      Approved: rows.filter((row) => row.status === 'Approved').length,
+      Rejected: rows.filter((row) => row.status === 'Rejected').length,
+      total: rows.length,
     }),
-    [leaves]
+    [rows]
   );
 
   const visible = useMemo(
     () =>
-      leaves.filter(
-        (leave) =>
-          (!statusTab || leave.status === statusTab) &&
-          (!employeeId || String(leave.employee?.id) === String(employeeId))
+      rows.filter(
+        (row) =>
+          (!statusTab || row.status === statusTab) &&
+          (!employeeId || String(row.employee?.id) === String(employeeId))
       ),
-    [leaves, statusTab, employeeId]
+    [rows, statusTab, employeeId]
   );
 
   const selectedEmployee = employees.find((employee) => employee.id === employeeId);
+  const leavePending = leaves.filter((leave) => leave.status === 'Pending').length;
+  const permissionPending = permissions.filter((permission) => permission.status === 'Pending').length;
+
+  function changeView(next) {
+    setView(next);
+    setStatusTab('');
+  }
 
   return (
     <div className="page-content">
@@ -98,52 +116,35 @@ export default function LeaveManagement({ onNavigate }) {
           <p className="eyebrow">ADMIN CONSOLE</p>
           <h1>Leave Management</h1>
           <p className="muted">
-            Review requests, approve or reject leave, and check each employee's history.
-            {counts.Pending ? ` ${counts.Pending} request(s) need a decision.` : ' Nothing pending.'}
+            Review leave and permission requests, approve or reject them, and check each
+            employee&apos;s history.
           </p>
-        </div>
-        <button className="secondary" onClick={() => onNavigate('reports')}>
-          <CalendarDays size={16} /> Leave in reports
-        </button>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-top">
-            <span>All requests</span>
-            <span className="stat-icon"><CalendarDays size={19} /></span>
-          </div>
-          <div className="stat-value">{counts.total}</div>
-          <div className="stat-foot">Every leave application</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top">
-            <span>Pending</span>
-            <span className="stat-icon warn"><Check size={19} /></span>
-          </div>
-          <div className="stat-value">{counts.Pending}</div>
-          <div className="stat-foot">Waiting for review</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top">
-            <span>Approved</span>
-            <span className="stat-icon"><Check size={19} /></span>
-          </div>
-          <div className="stat-value">{counts.Approved}</div>
-          <div className="stat-foot">Recorded as Leave in attendance</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top">
-            <span>Rejected</span>
-            <span className="stat-icon danger"><X size={19} /></span>
-          </div>
-          <div className="stat-value">{counts.Rejected}</div>
-          <div className="stat-foot">Declined requests</div>
         </div>
       </div>
 
       <div className="tabs">
-        {TABS.map((tab) => (
+        <button
+          type="button"
+          className={`tab ${isLeaves ? 'active' : ''}`}
+          onClick={() => changeView('leaves')}
+        >
+          Leave requests
+          <span className={`tab-count ${leavePending ? 'badge-warn' : ''}`}>{leaves.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`tab ${!isLeaves ? 'active' : ''}`}
+          onClick={() => changeView('permissions')}
+        >
+          Permission requests
+          <span className={`tab-count ${permissionPending ? 'badge-warn' : ''}`}>
+            {permissions.length}
+          </span>
+        </button>
+      </div>
+
+      <div className="tabs">
+        {STATUS_TABS.map((tab) => (
           <button
             key={tab.key || 'all'}
             type="button"
@@ -161,11 +162,19 @@ export default function LeaveManagement({ onNavigate }) {
       <section className="panel">
         <div className="panel-heading responsive-heading">
           <div>
-            <h2>{selectedEmployee ? `${selectedEmployee.name} — leave history` : 'Leave requests'}</h2>
+            <h2>
+              {selectedEmployee
+                ? `${selectedEmployee.name} — ${isLeaves ? 'leave' : 'permission'} history`
+                : isLeaves
+                  ? 'Leave requests'
+                  : 'Permission requests'}
+            </h2>
             <p className="muted small-text">
               {selectedEmployee
                 ? 'All requests from this employee, newest first.'
-                : 'Approving a request records the range as Leave in attendance.'}
+                : isLeaves
+                  ? 'Approving a leave request records the range as Leave in attendance.'
+                  : 'Each permission request shows its date, time window, duration and reason.'}
             </p>
           </div>
           <div className="filters">
@@ -190,8 +199,8 @@ export default function LeaveManagement({ onNavigate }) {
 
         <div className="table-wrap">
           {loading ? (
-            <Spinner label="Loading leave requests..." />
-          ) : (
+            <Spinner label={isLeaves ? 'Loading leave requests...' : 'Loading permission requests...'} />
+          ) : isLeaves ? (
             <table>
               <thead>
                 <tr>
@@ -220,7 +229,7 @@ export default function LeaveManagement({ onNavigate }) {
                     </td>
                     <td>{formatDate(leave.startDate)}</td>
                     <td>{formatDate(leave.endDate)}</td>
-                    <td>{daysBetween(leave.startDate, leave.endDate)}</td>
+                    <td>{leave.days}</td>
                     <td className="reason-cell" title={leave.reason}>
                       {leave.reason}
                     </td>
@@ -245,21 +254,21 @@ export default function LeaveManagement({ onNavigate }) {
                         <div className="row-actions">
                           <button
                             className="approve-btn"
-                            onClick={() => review(leave.id, 'approve')}
+                            onClick={() => review('leaves', leave.id, 'approve')}
                           >
                             <Check size={14} /> Approve
                           </button>
                           <button
                             className="reject-btn"
                             onClick={() =>
-                              askConfirm({
+                              setConfirm({
                                 title: 'Reject leave request?',
                                 message: `${leave.employee?.name || 'This employee'} requested leave from ${formatDate(
                                   leave.startDate
                                 )} to ${formatDate(leave.endDate)}.`,
                                 confirmLabel: 'Reject',
                                 danger: true,
-                                onConfirm: () => review(leave.id, 'reject'),
+                                onConfirm: () => review('leaves', leave.id, 'reject'),
                               })
                             }
                           >
@@ -276,6 +285,90 @@ export default function LeaveManagement({ onNavigate }) {
                   <tr>
                     <td colSpan="9" className="empty">
                       No leave requests match these filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Duration</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Reviewed by</th>
+                  <th className="col-action">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((permission) => (
+                  <tr key={permission.id}>
+                    <td>
+                      <div className="employee-cell">
+                        <div className="avatar tiny">{initials(permission.employee?.name)}</div>
+                        <div>
+                          <b>{permission.employee?.name || 'Employee'}</b>
+                          <small>{permission.employee?.department || permission.employee?.email}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{formatDate(permission.date)}</td>
+                    <td>{formatTime(permission.startTime)}</td>
+                    <td>{formatTime(permission.endTime)}</td>
+                    <td>{permission.durationLabel}</td>
+                    <td className="reason-cell" title={permission.reason}>
+                      {permission.reason}
+                    </td>
+                    <td>
+                      <Status status={permission.status} />
+                    </td>
+                    <td>
+                      {permission.reviewer?.name || '—'}
+                      {permission.reviewNote && (
+                        <small className="cell-note">{permission.reviewNote}</small>
+                      )}
+                    </td>
+                    <td className="col-action">
+                      {permission.status === 'Pending' ? (
+                        <div className="row-actions">
+                          <button
+                            className="approve-btn"
+                            onClick={() => review('permissions', permission.id, 'approve')}
+                          >
+                            <Check size={14} /> Approve
+                          </button>
+                          <button
+                            className="reject-btn"
+                            onClick={() =>
+                              setConfirm({
+                                title: 'Reject permission request?',
+                                message: `${permission.employee?.name || 'This employee'} requested permission on ${formatDate(
+                                  permission.date
+                                )}, ${formatTime(permission.startTime)}–${formatTime(permission.endTime)}.`,
+                                confirmLabel: 'Reject',
+                                danger: true,
+                                onConfirm: () => review('permissions', permission.id, 'reject'),
+                              })
+                            }
+                          >
+                            <X size={14} /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="muted small-text">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!visible.length && (
+                  <tr>
+                    <td colSpan="9" className="empty">
+                      No permission requests match these filters.
                     </td>
                   </tr>
                 )}

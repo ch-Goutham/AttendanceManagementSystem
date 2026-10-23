@@ -41,12 +41,11 @@ function employeeShape(employee) {
 }
 
 function summarize(employee, records) {
-  const confirmed = records.filter((record) => record.approval === 'confirmed');
-  const presentRecords = confirmed.filter((record) => record.status === 'Present');
+  const presentRecords = records.filter((record) => record.status === 'Present');
   const halfDays = presentRecords.filter((record) => record.dayType === 'Half day').length;
   const fullDays = presentRecords.length - halfDays;
   const weightedPresent = presentRecords.reduce((sum, record) => sum + record.dayWeight, 0);
-  const absent = confirmed.filter((record) => record.status === 'Absent').length;
+  const absent = records.filter((record) => record.status === 'Absent').length;
 
   return {
     employee: employeeShape(employee),
@@ -56,10 +55,9 @@ function summarize(employee, records) {
     halfDays,
     weightedPresent: Math.round(weightedPresent * 100) / 100,
     absent,
-    leave: confirmed.filter((record) => record.status === 'Leave').length,
+    leave: records.filter((record) => record.status === 'Leave').length,
     late: presentRecords.filter((record) => record.late).length,
     earlyCheckout: presentRecords.filter((record) => record.earlyCheckout).length,
-    pending: records.filter((record) => record.approval === 'pending').length,
     attendancePercentage: attendancePercentage(weightedPresent, absent),
   };
 }
@@ -76,7 +74,6 @@ function addTotals(rows) {
       leave: acc.leave + row.leave,
       late: acc.late + row.late,
       earlyCheckout: acc.earlyCheckout + row.earlyCheckout,
-      pending: acc.pending + row.pending,
     }),
     {
       recordedDays: 0,
@@ -88,7 +85,6 @@ function addTotals(rows) {
       leave: 0,
       late: 0,
       earlyCheckout: 0,
-      pending: 0,
     }
   );
   totals.weightedPresent = Math.round(totals.weightedPresent * 100) / 100;
@@ -141,7 +137,6 @@ async function buildReport({ month: requestedMonth, employeeId }) {
         dayType: record.dayType,
         late: record.late,
         earlyCheckout: record.earlyCheckout,
-        approval: record.approval,
         note: record.note,
       }))
     : [];
@@ -202,7 +197,7 @@ async function buildExcel(report) {
 
   const individual = report.meta.scope === 'individual';
   const sheet = workbook.addWorksheet(individual ? 'Employee report' : `Attendance ${report.meta.month}`);
-  const lastColumn = individual ? 'J' : 'K';
+  const lastColumn = individual ? 'I' : 'K';
 
   sheet.mergeCells(`A1:${lastColumn}1`);
   sheet.getCell('A1').value = individual
@@ -230,7 +225,6 @@ async function buildExcel(report) {
       'Day type',
       'Late',
       'Early out',
-      'Approval',
       'Note',
     ]);
     styleHeaderRow(header);
@@ -245,7 +239,6 @@ async function buildExcel(report) {
         day.status === 'Present' ? day.dayType : '—',
         day.late ? 'Yes' : 'No',
         day.earlyCheckout ? 'Yes' : 'No',
-        day.approval,
         day.note || '',
       ]);
       styleDataRow(row);
@@ -260,8 +253,7 @@ async function buildExcel(report) {
       `${report.totals.fullDays} full / ${report.totals.halfDays} half`,
       report.totals.late,
       report.totals.earlyCheckout,
-      `${report.totals.absent} absent · ${report.totals.leave} leave`,
-      `${report.totals.attendancePercentage}%`,
+      `${report.totals.absent} absent · ${report.totals.leave} leave · ${report.totals.attendancePercentage}%`,
     ]);
     totalRow.font = { bold: true };
     styleDataRow(totalRow);
@@ -275,7 +267,6 @@ async function buildExcel(report) {
       { width: 17 },
       { width: 8 },
       { width: 10 },
-      { width: 13 },
       { width: 42 },
     ];
   } else {
@@ -364,8 +355,7 @@ function pdfColumns(report) {
       { label: 'Day type', width: 64, value: (row) => (row.status === 'Present' ? row.dayType : '—') },
       { label: 'Late', width: 42, value: (row) => (row.late ? 'Yes' : 'No') },
       { label: 'Early', width: 44, value: (row) => (row.earlyCheckout ? 'Yes' : 'No') },
-      { label: 'Approval', width: 68, value: (row) => row.approval },
-      { label: 'Note', width: 236, value: (row) => row.note || '' },
+      { label: 'Note', width: 304, value: (row) => row.note || '' },
     ];
   }
   return [
@@ -469,8 +459,7 @@ function renderPdf(doc, report) {
         dayType: `${report.totals.fullDays} full / ${report.totals.halfDays} half`,
         late: report.totals.late,
         earlyCheckout: report.totals.earlyCheckout,
-        approval: `${report.totals.absent} absent / ${report.totals.leave} leave`,
-        note: `${report.totals.attendancePercentage}% attendance`,
+        note: `${report.totals.absent} absent · ${report.totals.leave} leave · ${report.totals.attendancePercentage}% attendance`,
       }
     : {
         employee: { name: 'Team total', employeeCode: '', department: '' },

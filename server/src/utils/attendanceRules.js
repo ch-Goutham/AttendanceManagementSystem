@@ -27,20 +27,38 @@ export const monthKey = (date = new Date()) =>
 export const nowTime = (date = new Date()) =>
   `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
+/** Local wall-clock minutes (with seconds) from an exact captured timestamp. */
+function minutesOfDay(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+}
+
 /**
  * Derived attendance facts. Nothing here is persisted except the final
  * `dayType`, so changing the shift in .env never leaves stale flags behind.
+ * Exact check-in/out timestamps are preferred when present, so a same-minute
+ * checkout and second-level lateness are still measured correctly.
  */
 export function computeAttendanceMetrics(record, config = getAttendanceConfig()) {
   const status = record.status;
   const checkIn = record.checkIn || '';
   const checkOut = record.checkOut || '';
-  const inMinutes = toMinutes(checkIn);
-  const outMinutes = toMinutes(checkOut);
+  const exactIn = minutesOfDay(record.checkInAt);
+  const exactOut = minutesOfDay(record.checkOutAt);
+  const inMinutes = exactIn ?? toMinutes(checkIn);
+  const outMinutes = exactOut ?? toMinutes(checkOut);
   const isPresent = status === 'Present';
 
   const workedMinutes =
-    inMinutes != null && outMinutes != null && outMinutes > inMinutes ? outMinutes - inMinutes : null;
+    exactIn != null && exactOut != null
+      ? exactOut >= exactIn
+        ? Math.round(exactOut - exactIn)
+        : null
+      : inMinutes != null && outMinutes != null && outMinutes >= inMinutes
+        ? outMinutes - inMinutes
+        : null;
 
   const shiftStart = toMinutes(config.shiftStart);
   const shiftEnd = toMinutes(config.shiftEnd);
@@ -111,7 +129,7 @@ export function validateTimes(checkIn, checkOut) {
   if (checkIn && checkOut) {
     const inMinutes = toMinutes(checkIn);
     const outMinutes = toMinutes(checkOut);
-    if (outMinutes <= inMinutes) return 'Check-out must be later than check-in';
+    if (outMinutes < inMinutes) return 'Check-out must be later than check-in';
   }
   return null;
 }

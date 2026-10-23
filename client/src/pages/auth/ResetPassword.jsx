@@ -4,6 +4,8 @@ import { ShieldCheck } from 'lucide-react';
 import api from '../../api';
 import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
+import PasswordChecklist from '../../components/PasswordChecklist';
+import { passwordError } from '../../lib/password';
 import { backDestination } from './ForgotPassword';
 
 export default function ResetPasswordPage() {
@@ -22,6 +24,11 @@ export default function ResetPasswordPage() {
     setError('');
     if (password !== confirm) {
       setError('Passwords do not match');
+      return;
+    }
+    const passwordIssue = passwordError(password);
+    if (passwordIssue) {
+      setError(passwordIssue);
       return;
     }
     setBusy(true);
@@ -64,9 +71,11 @@ export default function ResetPasswordPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 minLength={8}
+                maxLength={72}
                 required
                 placeholder="At least 8 characters"
               />
+              <PasswordChecklist value={password} />
             </label>
             <label>
               Confirm password
@@ -74,6 +83,7 @@ export default function ResetPasswordPage() {
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
                 minLength={8}
+                maxLength={72}
                 required
                 placeholder="Re-enter password"
               />

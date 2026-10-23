@@ -6,12 +6,22 @@ import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import leaveRoutes from './routes/leaves.js';
+import permissionRoutes from './routes/permissions.js';
 import dashboardRoutes from './routes/dashboard.js';
 import reportRoutes from './routes/reports.js';
 
 dotenv.config();
 
 const app = express();
+
+// API responses must not be cached. Without this, Express's ETag support lets
+// browsers revalidate a request and receive an empty 304, which Axios treats as
+// an error even though the backend is healthy.
+app.set('etag', false);
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -33,6 +43,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leaves', leaveRoutes);
+app.use('/api/permissions', permissionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 

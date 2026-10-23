@@ -238,7 +238,6 @@ export default function Reports() {
                       <th>Day type</th>
                       <th>Late</th>
                       <th>Early out</th>
-                      <th>Approval</th>
                       <th>Note</th>
                     </tr>
                   </thead>
@@ -253,13 +252,12 @@ export default function Reports() {
                         <td>{day.status === 'Present' ? day.dayType : '—'}</td>
                         <td>{day.late ? 'Yes' : 'No'}</td>
                         <td>{day.earlyCheckout ? 'Yes' : 'No'}</td>
-                        <td>{day.approval}</td>
                         <td className="reason-cell">{day.note || '—'}</td>
                       </tr>
                     ))}
                     {!report.days.length && (
                       <tr>
-                        <td colSpan="10" className="empty">
+                        <td colSpan="9" className="empty">
                           No attendance recorded for this employee in {month}.
                         </td>
                       </tr>

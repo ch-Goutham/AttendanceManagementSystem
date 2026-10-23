@@ -5,24 +5,24 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 ## Features
 
 ### Admin console (5 sections)
-- **Dashboard** — total employees, present today, absent today, on leave today, late arrivals, unmarked accounts and pending self-marks.
+- **Dashboard** — total employees, present today, absent today, on leave today and late arrivals.
 - **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees.
-- **Attendance** — check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, filters, and corrections.
-- **Leave Management** — pending/approved/rejected tabs, employee filter, leave history, approve/reject with attendance stamping.
+- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections.
+- **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request.
 - **Reports** — monthly team report or individual employee report, with Excel (`.xlsx`) and PDF downloads.
 
 ### Employee workspace
-- Check in and check out for today; times are auto-captured and confirmed by an admin.
-- Self-mark a missed day as Present or Absent (pending admin approval).
-- Personal attendance calendar and monthly history, including check-in/out times.
-- Apply for leave, track status, and withdraw a pending request.
+- Dashboard with the employee's total leave and permission requests plus approved/pending/rejected status.
+- **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history and a monthly attendance percentage (half days count as 0.5, leave excluded).
+- **Permission** form with reason, start time, end time and auto-calculated total duration, plus request status.
+- **Apply Leave** form with reason, start date, end date, total leave days and approval status.
 
 ### Access rules
 - Admins can view and manage all employees' attendance and leave.
-- Employees can only view and change their own attendance and leave.
+- Employees can only see their own attendance, leave and permission records.
 - Employee accounts cannot reach the Admin Screen (`/admin` redirects, and every admin API is protected).
-- Admins create employee credentials; there is no public employee sign-up.
-- Admin sign-up is available at the unlisted `/admin-signup` route. The route is not linked from any page, but anyone who knows the URL can create an admin account. Keep the URL private, or add an invite/allowlist before using this in production.
+- Admins create employee credentials; there is no public employee sign-up and admins cannot create other admin accounts from the Employees page.
+- Admin sign-up is available at the unlisted `/admin-signup` route for first-admin bootstrap. The route is not linked from any page, but anyone who knows the URL can create an admin account. Keep the URL private, or add an invite/allowlist before using this in production.
 
 ### Attendance rules
 - One global shift, configured in `server/.env`:
@@ -33,6 +33,14 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 - Admins can override the day type when correcting a record.
 - Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
 - Times are stored as company-local `HH:mm` alongside the `YYYY-MM-DD` date, so there is no timezone date drift.
+- Check-in and check-out also store the exact server instant (`checkInAt`, `checkOutAt`) with seconds; the `HH:mm` values are the display/edit form.
+
+### Password policy
+- Passwords must be 8–72 characters.
+- They must include uppercase, lowercase, a number and a special character.
+- Spaces are not allowed.
+- The policy is enforced for admin signup, employee creation, admin password resets and self-service resets.
+- Login requires at least 8 characters and a matching password, but does not re-check complexity so existing accounts keep working.
 
 ## Requirements
 - Node.js 18+
@@ -108,7 +116,7 @@ This means the browser could not reach the backend; it is not an Excel/PDF gener
 4. If port 5000 or 5173 is already in use, stop the old process before starting again.
 
 ## First admin
-Open `/admin-signup` directly in the browser (for example `http://localhost:5173/admin-signup`). The route is deliberately not linked from the app, so no "Sign up" link appears on the login pages. After creating the first admin, further admins can also be created from **Employees**.
+Open `/admin-signup` directly in the browser (for example `http://localhost:5173/admin-signup`). The route is deliberately not linked from the app, so no "Sign up" link appears on the login pages. Admin accounts are created only through this bootstrap route; the **Employees** page creates employee logins.
 
 ## Google sign-in setup
 1. In the Google Cloud Console, configure the OAuth consent screen.
@@ -130,40 +138,40 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 ## API overview
 
 ### Auth
-- `POST /api/auth/register-admin` — create an admin account (`name`, `phone`, `email`, `password`, `acceptTerms`)
-- `POST /api/auth/login` — admin or employee login
-- `POST /api/auth/google/login` — sign in an existing account with a Google ID token
+- `POST /api/auth/register-admin` — create an admin account (`name`, `email`, `password`, `acceptTerms`)
+- `POST /api/auth/login` — admin or employee login; include `portal: "admin"` or `portal: "employee"` and credentials from the matching portal
+- `POST /api/auth/google/login` — sign in an existing account with a Google ID token; also requires the matching `portal`
 - `POST /api/auth/google/register-admin` — create an admin from a Google ID token (Terms required)
 - `GET /api/auth/me` — current user
 - `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — password reset flow
 
 ### Employees (admin only)
 - `POST /api/employees` — create an employee account and login credentials
-- `GET /api/employees` — list employees and admins
+- `GET /api/employees` — list employee accounts
 - `PATCH /api/employees/:id/status` — activate/deactivate
-- `PATCH /api/employees/:id/password` — reset a password (≥ 8 chars)
+- `PATCH /api/employees/:id/password` — reset a password (8–72 chars with uppercase, lowercase, number and special character)
 - `DELETE /api/employees/:id` — permanently delete an employee and their records
 
 ### Attendance
-- `GET /api/attendance` — records; admin can filter by `employeeId`, `month`, `date`, `from`, `to`, `status`, `approval`, `late=true`; employees are always scoped to their own records
-- `GET /api/attendance/summary?month=YYYY-MM` — present/absent/leave/half-day/late counts and attendance percentage
-- `GET /api/attendance/calendar?month=YYYY-MM` — calendar records for the signed-in employee
+- `GET /api/attendance` — records; admin can filter by `employeeId`, `month` or `date`; employees are always scoped to their own records
 - `GET /api/attendance/today` — the signed-in employee's record for today
-- `GET /api/attendance/config` — shift, grace, half-day and working-day rules
-- `POST /api/attendance` — admin marks any employee; employees mark only themselves (Present/Absent, pending approval)
-- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee self check-in/out for today
+- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason`
+- `PATCH /api/attendance/today/late-reason` — employee adds/updates today's reason for a late check-in
 - `PATCH /api/attendance/:id` — **admin** corrects status, times, day type or note
-- `GET /api/attendance/pending` — **admin** queue of self-marks awaiting approval
-- `PATCH /api/attendance/:id/review` — **admin** confirms/rejects a self-mark
 
 ### Leave
-- `POST /api/leaves` — employee applies for leave
+- `POST /api/leaves` — employee applies for leave; responses include the computed `days`
 - `GET /api/leaves` — employee: own requests; admin: all requests (`employeeId`, `status` filters)
 - `PATCH /api/leaves/:id/review` — admin approves/rejects; approving writes `Leave` into attendance for every date in the range
-- `DELETE /api/leaves/:id` — employee withdraws their own pending request
 
-### Dashboard and reports (admin only)
-- `GET /api/dashboard` — today's headline numbers and shift rules
+### Permission
+- `POST /api/permissions` — employee requests permission (`date`, `startTime`, `endTime`, `reason`); duration is computed and overlaps are rejected
+- `GET /api/permissions` — employee: own requests; admin: all requests (`employeeId`, `status`, `month`, `date` filters)
+- `PATCH /api/permissions/:id/review` — admin approves/rejects
+
+### Dashboard and reports
+- `GET /api/dashboard` — **admin** total employees, present today, absent today, on leave today and late arrivals
+- `GET /api/dashboard/me` — **employee** leave/permission totals, approval statuses and newest requests
 - `GET /api/reports/attendance?month=YYYY-MM&employeeId=` — JSON report preview
 - `GET /api/reports/attendance.xlsx?month=YYYY-MM&employeeId=` — Excel download
 - `GET /api/reports/attendance.pdf?month=YYYY-MM&employeeId=` — PDF download
@@ -206,10 +214,15 @@ Environment variables:
 MONGO_URI=<MongoDB Atlas connection string>
 JWT_SECRET=<long random string>
 CLIENT_URL=https://client-ams.vercel.app
+APP_URL=https://client-ams.vercel.app
 GOOGLE_CLIENT_ID=<Google OAuth web client ID>
+RESEND_API_KEY=<Resend API key>
+MAIL_FROM=Attendwise <no-reply@yourdomain.com>
 ```
 
-Do not set `PORT` on Render; the platform injects it and the server already reads `process.env.PORT`. Also configure the optional SMTP and shift variables from `server/.env.example` if password-reset email or non-default attendance rules are needed.
+Do not set `PORT` on Render; the platform injects it and the server already reads `process.env.PORT`. `APP_URL` is used to build password-reset links and falls back to `CLIENT_URL`.
+
+For password-reset email, **Resend is recommended**. Render free web services block outbound SMTP ports `25`, `465` and `587`, so SMTP delivery (including Gmail) will fail on the free plan. Set `RESEND_API_KEY` and a verified `MAIL_FROM`; the app calls the Resend HTTP API instead of SMTP. Paid Render instances can alternatively use the SMTP variables in `server/.env.example`. If no email provider is configured, the reset link is printed to the Render logs.
 
 `CLIENT_URL` is the only origin allowed by CORS besides `http://localhost:5173`. If the frontend domain changes, update it and redeploy; otherwise every login and API call fails with a CORS error.
 

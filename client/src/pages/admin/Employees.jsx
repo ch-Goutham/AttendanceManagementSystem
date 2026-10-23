@@ -12,13 +12,15 @@ import api from '../../api';
 import { useToast } from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import PasswordInput from '../../components/PasswordInput';
+import PasswordChecklist from '../../components/PasswordChecklist';
 import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { errMsg, initials, randomPassword } from '../../lib/format';
+import { passwordError } from '../../lib/password';
 
 const EMPTY_FORM = { name: '', email: '', phone: '', password: '', employeeCode: '', department: '' };
 
-export default function Employees({ user }) {
+export default function Employees() {
   const notify = useToast();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ export default function Employees({ user }) {
     setLoading(true);
     try {
       const { data } = await api.get('/employees');
-      setEmployees(data.employees || []);
+      setEmployees((data.employees || []).filter((employee) => employee.role === 'employee'));
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -62,9 +64,14 @@ export default function Employees({ user }) {
 
   async function createEmployee(event) {
     event.preventDefault();
+    const passwordIssue = passwordError(form.password);
+    if (passwordIssue) {
+      notify('error', passwordIssue);
+      return;
+    }
     setSaving(true);
     try {
-      await api.post('/employees', { ...form, role: 'employee' });
+      await api.post('/employees', form);
       setForm(EMPTY_FORM);
       setShowForm(false);
       notify('success', 'Employee login created.');
@@ -102,6 +109,11 @@ export default function Employees({ user }) {
 
   async function submitReset(event) {
     event.preventDefault();
+    const passwordIssue = passwordError(tempPassword);
+    if (passwordIssue) {
+      notify('error', passwordIssue);
+      return;
+    }
     setResetBusy(true);
     try {
       await api.patch(`/employees/${resetId}/password`, { password: tempPassword });
@@ -116,12 +128,11 @@ export default function Employees({ user }) {
   }
 
   const resetTarget = employees.find((employee) => employee.id === resetId);
-  const isSelf = (id) => String(id) === String(user?.id);
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return employees;
     return employees.filter((employee) =>
-      [employee.name, employee.email, employee.phone, employee.employeeCode, employee.department, employee.role]
+      [employee.name, employee.email, employee.phone, employee.employeeCode, employee.department]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term))
     );
@@ -162,9 +173,11 @@ export default function Employees({ user }) {
                 value={tempPassword}
                 onChange={(event) => setTempPassword(event.target.value)}
                 minLength={8}
+                maxLength={72}
                 required
                 placeholder="At least 8 characters"
               />
+              <PasswordChecklist value={tempPassword} />
             </label>
             <div className="form-actions">
               <button type="button" className="secondary" onClick={() => setTempPassword(randomPassword())}>
@@ -210,13 +223,17 @@ export default function Employees({ user }) {
               <label key={key}>
                 {label}
                 {key === 'password' ? (
-                  <PasswordInput
-                    required
-                    minLength={8}
-                    value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
-                    placeholder={label}
-                  />
+                  <>
+                    <PasswordInput
+                      required
+                      minLength={8}
+                      maxLength={72}
+                      value={form.password}
+                      onChange={(event) => setForm({ ...form, password: event.target.value })}
+                      placeholder={label}
+                    />
+                    <PasswordChecklist value={form.password} />
+                  </>
                 ) : (
                   <input
                     required={['name', 'email'].includes(key)}
@@ -270,7 +287,6 @@ export default function Employees({ user }) {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Role</th>
                   <th>Employee ID</th>
                   <th>Email</th>
                   <th>Phone</th>
@@ -288,16 +304,10 @@ export default function Employees({ user }) {
                       <div className="employee-cell">
                         <div className="avatar tiny">{initials(employee.name)}</div>
                         <div>
-                          <b>
-                            {employee.name}
-                            {isSelf(employee.id) && <span className="muted small-text"> · you</span>}
-                          </b>
+                          <b>{employee.name}</b>
                           <small>{employee.department || 'No department'}</small>
                         </div>
                       </div>
-                    </td>
-                    <td>
-                      <Status status={employee.role === 'admin' ? 'Admin' : 'Employee'} />
                     </td>
                     <td>{employee.employeeCode || '—'}</td>
                     <td>{employee.email}</td>
@@ -328,8 +338,6 @@ export default function Employees({ user }) {
                         >
                           <UserCheck size={14} /> Reactivate
                         </button>
-                      ) : isSelf(employee.id) ? (
-                        <span className="muted small-text">You</span>
                       ) : (
                         <button
                           className="link-btn danger-text"
@@ -349,32 +357,30 @@ export default function Employees({ user }) {
                       )}
                     </td>
                     <td className="col-action">
-                      {employee.role === 'employee' ? (
-                        <button
-                          className="link-btn danger-text"
-                          title="Delete employee"
-                          onClick={() =>
-                            askConfirm({
-                              title: 'Delete employee permanently?',
-                              message: `${employee.name}, their attendance and their leave records will be permanently removed. This cannot be undone.`,
-                              confirmLabel: 'Delete',
-                              danger: true,
-                              onConfirm: () => remove(employee.id),
-                            })
-                          }
-                        >
-                          <Trash2 size={14} /> Delete
-                        </button>
-                      ) : (
-                        <span className="muted small-text">—</span>
-                      )}
+                      <button
+                        className="link-btn danger-text"
+                        title="Delete employee"
+                        onClick={() =>
+                          askConfirm({
+                            title: 'Delete employee permanently?',
+                            message: `${employee.name}, their attendance and their leave records will be permanently removed. This cannot be undone.`,
+                            confirmLabel: 'Delete',
+                            danger: true,
+                            onConfirm: () => remove(employee.id),
+                          })
+                        }
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
                 {!visible.length && (
                   <tr>
                     <td colSpan="9" className="empty">
-                      {employees.length ? 'No accounts match your search.' : 'No accounts yet. Add your first employee.'}
+                      {employees.length
+                        ? 'No employees match your search.'
+                        : 'No employees yet. Add your first employee.'}
                     </td>
                   </tr>
                 )}

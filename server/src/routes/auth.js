@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import ResetToken from '../models/ResetToken.js';
 import { sendResetEmail } from '../utils/mailer.js';
+import { PASSWORD_MIN_LENGTH, passwordError } from '../utils/password.js';
 import { protect } from '../middleware/auth.js';
 const router = Router();
 
@@ -25,15 +26,14 @@ function httpError(status, message) {
   error.status = status;
   return error;
 }
-// Accepts international formats such as +91 98765 43210, (555) 010-2030 and
-// 9876543210. Requires 7-15 digits after removing spaces and separators.
-function isValidPhone(value) {
-  const phone = String(value || '').trim();
-  if (!/^[+()\d\s-]+$/.test(phone)) return false;
-  const digits = phone.replace(/\D/g, '');
-  return digits.length >= 7 && digits.length <= 15;
+function loginPortal(value) {
+  return value === 'admin' || value === 'employee' ? value : '';
 }
-
+function portalMismatchMessage(role) {
+  return role === 'admin'
+    ? 'This is an admin account. Please use the admin login page.'
+    : 'This is an employee account. Please use the employee login page.';
+}
 // Verifies a Google Identity Services ID token and returns its payload.
 async function verifyGoogleCredential(credential) {
   if (!process.env.GOOGLE_CLIENT_ID)
@@ -60,17 +60,14 @@ async function verifyGoogleCredential(credential) {
 router.post('/register-admin', async (req, res, next) => {
   try {
     const { name, email, password, acceptTerms } = req.body;
-    const phone = String(req.body?.phone || '').trim();
     if (!name?.trim() || !email?.trim() || !password) return res.status(400).json({ message: 'Name, email and password are required' });
-    if (!phone) return res.status(400).json({ message: 'Phone number is required' });
-    if (!isValidPhone(phone)) return res.status(400).json({ message: 'Enter a valid phone number (7-15 digits)' });
     if (acceptTerms !== true) return res.status(400).json({ message: 'You must agree to the Terms & Conditions' });
-    if (password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    const passwordIssue = passwordError(password);
+    if (passwordIssue) return res.status(400).json({ message: passwordIssue });
     if (await User.exists({ email: email.toLowerCase().trim() })) return res.status(409).json({ message: 'Email already registered' });
     const user = await User.create({
       name: name.trim(),
       email,
-      phone,
       password: await bcrypt.hash(password, 12),
       role: 'admin'
     });
@@ -80,10 +77,17 @@ router.post('/register-admin', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email: email?.toLowerCase().trim() }).select('+password');
-    if (!user || !user.isActive || !user.password || !(await bcrypt.compare(password || '', user.password)))
+    const portal = loginPortal(req.body?.portal);
+    if (!portal) return res.status(400).json({ message: 'Choose the admin or employee login page.' });
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!email || password.length < PASSWORD_MIN_LENGTH)
       return res.status(401).json({ message: 'Invalid email or password' });
+    const user = await User.findOne({ email }).select('+password');
+    if (!user || !user.isActive || !user.password || !(await bcrypt.compare(password, user.password)))
+      return res.status(401).json({ message: 'Invalid email or password' });
+    if (user.role !== portal)
+      return res.status(403).json({ message: portalMismatchMessage(user.role) });
     res.json({ token: makeToken(user), user: publicUser(user) });
   } catch (e) { next(e); }
 });
@@ -92,10 +96,14 @@ router.post('/login', async (req, res, next) => {
 // a Google account alone can never grant access to the admin console.
 router.post('/google/login', async (req, res, next) => {
   try {
+    const portal = loginPortal(req.body?.portal);
+    if (!portal) return res.status(400).json({ message: 'Choose the admin or employee login page.' });
     const payload = await verifyGoogleCredential(req.body?.credential);
     const user = await User.findOne({ email: payload.email.toLowerCase().trim() });
     if (!user) return res.status(404).json({ message: 'No account found for this Google email.' });
     if (!user.isActive) return res.status(403).json({ message: 'This account has been deactivated' });
+    if (user.role !== portal)
+      return res.status(403).json({ message: portalMismatchMessage(user.role) });
     res.json({ token: makeToken(user), user: publicUser(user) });
   } catch (e) { next(e); }
 });
@@ -104,9 +112,7 @@ router.post('/google/login', async (req, res, next) => {
 router.post('/google/register-admin', async (req, res, next) => {
   try {
     const { acceptTerms } = req.body;
-    const phone = String(req.body?.phone || '').trim();
     if (acceptTerms !== true) return res.status(400).json({ message: 'You must agree to the Terms & Conditions' });
-    if (phone && !isValidPhone(phone)) return res.status(400).json({ message: 'Enter a valid phone number (7-15 digits)' });
     const payload = await verifyGoogleCredential(req.body?.credential);
     if (!payload.sub) throw httpError(401, 'Google sign-in failed. Please try again.');
     const email = payload.email.toLowerCase().trim();
@@ -114,7 +120,6 @@ router.post('/google/register-admin', async (req, res, next) => {
     const user = await User.create({
       name: payload.name?.trim() || email.split('@')[0],
       email,
-      phone,
       googleId: payload.sub,
       role: 'admin'
     });
@@ -156,7 +161,8 @@ router.post('/reset-password', async (req, res, next) => {
     const { token, password } = req.body;
     const email = req.body?.email?.toLowerCase().trim();
     if (!password) return res.status(400).json({ message: 'A new password is required' });
-    if (password.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    const passwordIssue = passwordError(password);
+    if (passwordIssue) return res.status(400).json({ message: passwordIssue });
     const user = email ? await User.findOne({ email, isActive: true }) : null;
     const record = user && token
       ? await ResetToken.findOne({ user: user._id, tokenHash: hashToken(token), expiresAt: { $gt: new Date() } })

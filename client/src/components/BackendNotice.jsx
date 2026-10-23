@@ -9,7 +9,14 @@ export default function BackendNotice() {
 
   const check = useCallback(async () => {
     try {
-      await api.get('/health', { timeout: 5000 });
+      await api.get('/health', {
+        timeout: 15000,
+        params: { _: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' },
+        // Some proxies and Express caching can answer with 304. That still
+        // means the backend is reachable, so accept any non-error status.
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
       if (mounted.current) setOnline(true);
     } catch {
       if (mounted.current) setOnline(false);
@@ -40,9 +47,15 @@ export default function BackendNotice() {
         <AlertTriangle size={18} />
       </span>
       <span>
-        Backend not reachable. Start it with <code>npm run dev</code> in the project root, or{' '}
-        <code>cd server &amp;&amp; npm run dev</code>. Data and report downloads will fail until
-        it is running.
+        {import.meta.env.DEV ? (
+          <>
+            Backend not reachable. Start it with <code>npm run dev</code> in the project root, or{' '}
+            <code>cd server &amp;&amp; npm run dev</code>. Data and report downloads will fail until
+            it is running.
+          </>
+        ) : (
+          <>Cannot reach the server right now. Please retry in a moment.</>
+        )}
       </span>
       <button type="button" onClick={retry} disabled={checking}>
         <RefreshCw size={14} className={checking ? 'spin' : ''} />

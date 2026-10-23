@@ -15,43 +15,45 @@ import Employees from './pages/admin/Employees';
 import Attendance from './pages/admin/Attendance';
 import LeaveManagement from './pages/admin/LeaveManagement';
 import Reports from './pages/admin/Reports';
-import MyAttendance from './pages/employee/MyAttendance';
 import MarkAttendance from './pages/employee/MarkAttendance';
 import ApplyLeave from './pages/employee/ApplyLeave';
+import ApplyPermission from './pages/employee/ApplyPermission';
+import EmployeeDashboard from './pages/employee/Dashboard';
 
-const DEFAULT_PAGE = { admin: 'dashboard', employee: 'attendance' };
+const DEFAULT_PAGE = { admin: 'dashboard', employee: 'dashboard' };
 
 function AdminWorkspace({ user, activePage, setActivePage }) {
-  if (activePage === 'employees') return <Employees user={user} />;
-  if (activePage === 'attendance') return <Attendance onNavigate={setActivePage} />;
-  if (activePage === 'leaves') return <LeaveManagement onNavigate={setActivePage} />;
+  if (activePage === 'employees') return <Employees />;
+  if (activePage === 'attendance') return <Attendance />;
+  if (activePage === 'leaves') return <LeaveManagement />;
   if (activePage === 'reports') return <Reports />;
   return <Dashboard user={user} onNavigate={setActivePage} />;
 }
 
-function EmployeeWorkspace({ user, activePage }) {
+function EmployeeWorkspace({ user, activePage, setActivePage }) {
   if (activePage === 'mark') return <MarkAttendance />;
   if (activePage === 'leave') return <ApplyLeave />;
-  return <MyAttendance user={user} />;
+  if (activePage === 'permission') return <ApplyPermission />;
+  return <EmployeeDashboard user={user} onNavigate={setActivePage} />;
 }
 
 function App() {
   const [auth, setAuth] = useState(() => readAuth());
-  const [activePage, setActivePage] = useState(() => DEFAULT_PAGE[auth?.role] || 'attendance');
+  const [activePage, setActivePage] = useState(() => DEFAULT_PAGE[auth?.role] || 'dashboard');
   const navigate = useNavigate();
 
   const signOut = () => {
     const wasAdmin = auth?.role === 'admin';
     clearAuth();
     setAuth(null);
-    setActivePage('attendance');
+    setActivePage('dashboard');
     navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
   };
 
   const onAuth = (data, remember = true) => {
     saveAuth(data, remember);
     setAuth(data.user);
-    setActivePage(DEFAULT_PAGE[data.user.role] || 'attendance');
+    setActivePage(DEFAULT_PAGE[data.user.role] || 'dashboard');
     navigate('/');
   };
 
@@ -116,7 +118,7 @@ function App() {
                 activePage={activePage}
                 setActivePage={setActivePage}
               >
-                <EmployeeWorkspace user={auth} activePage={activePage} />
+                <EmployeeWorkspace user={auth} activePage={activePage} setActivePage={setActivePage} />
               </Shell>
             </RequireAuth>
           }

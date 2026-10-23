@@ -28,6 +28,26 @@ export const formatTime = (value) => {
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 };
 
+// Exact server-captured instant (ISO string), including seconds.
+export const formatExactTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
+export const durationLabel = (minutes) => {
+  if (minutes == null) return '—';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}m`;
+  return rest ? `${hours}h ${String(rest).padStart(2, '0')}m` : `${hours}h`;
+};
+
 export const hoursLabel = (minutes) => {
   if (minutes == null) return '—';
   const hours = Math.floor(minutes / 60);
