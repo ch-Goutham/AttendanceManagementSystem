@@ -14,6 +14,24 @@ export const isValidDate = (value) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
   !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 
+/**
+ * Company wall-clock timezone. Attendance dates and HH:mm values must follow
+ * the office clock, not the server's clock: a host such as Render runs in UTC,
+ * which would record 10:00 IST as 04:30 and roll the date over at 05:30 IST.
+ */
+export function getCompanyTimeZone() {
+  const configured = String(process.env.COMPANY_TIMEZONE || '').trim();
+  const fallback = 'Asia/Kolkata';
+  const candidate = configured || fallback;
+  try {
+    // Throws for an unknown IANA zone, in which case UTC is the safe default.
+    new Intl.DateTimeFormat('en-GB', { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return 'UTC';
+  }
+}
+
 function numberFromEnv(name, fallback) {
   const parsed = Number(process.env[name]);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -47,6 +65,7 @@ export function publicAttendanceConfig() {
   const config = getAttendanceConfig();
   return {
     ...config,
+    timeZone: getCompanyTimeZone(),
     workingDayNames: config.workingDays.map((day) => DAY_NAMES[day]),
   };
 }

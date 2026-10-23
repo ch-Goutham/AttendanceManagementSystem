@@ -28,16 +28,16 @@ export const formatTime = (value) => {
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 };
 
-// Exact server-captured instant (ISO string), including seconds.
-export const formatExactTime = (value) => {
+// Exact server-captured instant (ISO string), including seconds. The optional
+// timezone keeps the displayed time on the office clock even when the API host
+// runs in UTC.
+export const formatExactTime = (value, timeZone) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const options = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  if (timeZone) options.timeZone = timeZone;
+  return date.toLocaleTimeString(undefined, options);
 };
 
 export const durationLabel = (minutes) => {

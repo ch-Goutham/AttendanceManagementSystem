@@ -6,7 +6,7 @@ import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
 import GoogleSignInButton from '../../components/GoogleSignInButton';
 
-export default function EmployeeLogin({ onAuth }) {
+export default function EmployeeLogin({ onAuth, currentUser }) {
   const [form, setForm] = useState({ email: '', password: '' });
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
@@ -58,6 +58,13 @@ export default function EmployeeLogin({ onAuth }) {
         <p className="eyebrow">EMPLOYEE PORTAL</p>
         <h1>Welcome back</h1>
         <p className="muted">Sign in to mark your attendance and apply for leave.</p>
+
+        {currentUser?.role === 'admin' && (
+          <div className="auth-note">
+            Signed in as <b>{currentUser.name}</b> (administrator). Signing in below replaces that
+            session. <Link to="/admin">Open admin console</Link>
+          </div>
+        )}
 
         <form onSubmit={submit}>
           <label>

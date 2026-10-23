@@ -17,6 +17,22 @@ const STATUSES = ['Present', 'Absent', 'Leave'];
 
 const monthRange = (month) => ({ $gte: `${month}-01`, $lte: `${month}-31` });
 
+// How far back an unfinished check-in is still considered "open". This covers a
+// night shift that checks out after midnight and an employee who forgot to
+// check out before the date rolled over, without reviving weeks-old rows.
+const OPEN_CHECKOUT_WINDOW_MS = 20 * 60 * 60 * 1000;
+
+function findOpenRecord(employeeId, now = new Date()) {
+  const since = new Date(now.getTime() - OPEN_CHECKOUT_WINDOW_MS);
+  return Attendance.findOne({
+    employee: employeeId,
+    date: { $lt: todayKey(now), $gte: todayKey(since) },
+    status: 'Present',
+    checkIn: { $nin: ['', null] },
+    checkOut: { $in: ['', null] },
+  }).sort({ date: -1 });
+}
+
 function normalizeDayType(value) {
   if (value === undefined || value === null) return '';
   return DAY_TYPES.includes(value) ? value : undefined;
@@ -32,9 +48,19 @@ router.get('/today', async (req, res, next) => {
       'employee',
       EMPLOYEE_FIELDS
     );
+
+    // A check-in from yesterday (night shift or a forgotten check-out) is shown
+    // so the employee can close it instead of silently leaving a half day open.
+    let openRecord = null;
+    if (!record?.checkIn) {
+      const carried = await findOpenRecord(req.user._id);
+      if (carried) openRecord = serializeAttendance(carried);
+    }
+
     res.json({
       date,
       record: record ? serializeAttendance(record) : null,
+      openRecord,
       config: publicAttendanceConfig(),
     });
   } catch (e) {
@@ -78,7 +104,8 @@ router.post('/check-in', async (req, res, next) => {
     if (req.user.role !== 'employee')
       return res.status(403).json({ message: 'Only employees can check in' });
 
-    const date = todayKey();
+    const now = new Date();
+    const date = todayKey(now);
     const existing = await Attendance.findOne({ employee: req.user._id, date });
 
     if (existing?.checkIn)
@@ -88,7 +115,12 @@ router.post('/check-in', async (req, res, next) => {
     if (existing?.status === 'Absent')
       return res.status(409).json({ message: 'You are marked absent today. Ask your admin to correct it.' });
 
-    const now = new Date();
+    const openRecord = await findOpenRecord(req.user._id, now);
+    if (openRecord)
+      return res.status(409).json({
+        message: `You still have an open check-in from ${openRecord.date}. Check out first before starting a new day.`,
+      });
+
     const checkIn = nowTime(now);
     const record = await Attendance.findOneAndUpdate(
       { employee: req.user._id, date },
@@ -121,17 +153,29 @@ router.post('/check-out', async (req, res, next) => {
     if (req.user.role !== 'employee')
       return res.status(403).json({ message: 'Only employees can check out' });
 
-    const date = todayKey();
-    const existing = await Attendance.findOne({ employee: req.user._id, date });
+    const now = new Date();
+    const date = todayKey(now);
+    let existing = await Attendance.findOne({ employee: req.user._id, date });
+    let carriedOver = false;
+
+    // Fall back to an unfinished record from the previous day so a check-out
+    // after midnight (or a forgotten check-out) still closes the right row.
+    if (!existing?.checkIn) {
+      existing = await findOpenRecord(req.user._id, now);
+      carriedOver = Boolean(existing?.checkIn);
+    }
 
     if (!existing?.checkIn) return res.status(400).json({ message: 'Check in first before checking out.' });
     if (existing.checkOut)
       return res.status(409).json({ message: 'You have already checked out today.' });
 
-    const now = new Date();
     const checkOut = nowTime(now);
-    const timeError = validateTimes(existing.checkIn, checkOut);
-    if (timeError) return res.status(400).json({ message: timeError });
+    // Comparing HH:mm only makes sense within one calendar day; a carried-over
+    // night shift is measured from the exact timestamps instead.
+    if (!carriedOver) {
+      const timeError = validateTimes(existing.checkIn, checkOut);
+      if (timeError) return res.status(400).json({ message: timeError });
+    }
 
     const metrics = computeAttendanceMetrics({
       status: 'Present',
@@ -157,7 +201,11 @@ router.post('/check-out', async (req, res, next) => {
       { new: true, runValidators: true }
     ).populate('employee', EMPLOYEE_FIELDS);
 
-    res.json({ record: serializeAttendance(record), config: publicAttendanceConfig() });
+    res.json({
+      record: serializeAttendance(record),
+      config: publicAttendanceConfig(),
+      carriedOver,
+    });
   } catch (e) {
     next(e);
   }

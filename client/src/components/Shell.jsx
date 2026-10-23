@@ -53,6 +53,27 @@ export default function Shell({ user, signOut, activePage, setActivePage, childr
     setMenuOpen(false);
   }, [activePage]);
 
+  // Mobile drawer: lock background scrolling, close on Escape, and drop the
+  // drawer entirely when the viewport grows back to the persistent sidebar.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    const onResize = () => {
+      if (window.innerWidth > 720) setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [menuOpen]);
+
   const selectPage = (key) => {
     setActivePage(key);
     setMenuOpen(false);

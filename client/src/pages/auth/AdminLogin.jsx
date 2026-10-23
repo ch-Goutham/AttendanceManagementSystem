@@ -6,7 +6,7 @@ import { errMsg } from '../../lib/format';
 import PasswordInput from '../../components/PasswordInput';
 import GoogleSignInButton from '../../components/GoogleSignInButton';
 
-export default function AdminLogin({ onAuth }) {
+export default function AdminLogin({ onAuth, currentUser }) {
   const [form, setForm] = useState({ email: '', password: '' });
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
@@ -59,6 +59,13 @@ export default function AdminLogin({ onAuth }) {
         <h1>Administrator sign in</h1>
         <p className="muted">Sign in to manage employees, attendance and leave.</p>
 
+        {currentUser && (
+          <div className="auth-note">
+            Signed in as <b>{currentUser.name}</b> ({currentUser.role}). Signing in below replaces
+            that session. <Link to="/employee">Back to the employee workspace</Link>
+          </div>
+        )}
+
         <form onSubmit={submit}>
           <label>
             Email
@@ -110,6 +117,10 @@ export default function AdminLogin({ onAuth }) {
         <div className="auth-divider" />
 
         <GoogleSignInButton onCredential={googleLogin} onError={setError} disabled={busy} />
+
+        <p className="auth-foot">
+          Looking for the employee portal? <Link to="/login">Employee sign in</Link>
+        </p>
       </div>
     </div>
   );

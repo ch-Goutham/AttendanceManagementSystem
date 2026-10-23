@@ -21,6 +21,7 @@ export default function MarkAttendance() {
   const [month, setMonth] = useState(monthKey(new Date()));
   const [records, setRecords] = useState([]);
   const [today, setToday] = useState(null);
+  const [openRecord, setOpenRecord] = useState(null);
   const [lateReason, setLateReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -35,6 +36,7 @@ export default function MarkAttendance() {
       ]);
       setRecords(recordsResponse.data.records || []);
       setToday(todayResponse.data);
+      setOpenRecord(todayResponse.data.openRecord || null);
       setLateReason(todayResponse.data.record?.lateReason || '');
     } catch (error) {
       notify('error', errMsg(error));
@@ -51,6 +53,15 @@ export default function MarkAttendance() {
     setBusy(true);
     try {
       const { data } = await api.post('/attendance/check-in');
+      // Show the saved state from the response immediately; the refetch below
+      // keeps the monthly history in sync.
+      setToday((current) => ({
+        date: current?.date || data.record?.date,
+        record: data.record,
+        openRecord: null,
+        config: data.config || current?.config,
+      }));
+      setOpenRecord(null);
       notify(
         'success',
         data.record?.late
@@ -68,8 +79,25 @@ export default function MarkAttendance() {
   async function checkOut() {
     setBusy(true);
     try {
-      await api.post('/attendance/check-out');
-      notify('success', 'Checked out. Your exact check-out time and hours were saved.');
+      const { data } = await api.post('/attendance/check-out');
+      if (data.carriedOver) {
+        notify(
+          'success',
+          `Closed the open check-in from ${formatDate(data.record?.date)}. Hours were saved.`
+        );
+      } else {
+        notify('success', 'Checked out. Your exact check-out time and hours were saved.');
+      }
+      setToday((current) => {
+        if (data.carriedOver) return { ...(current || {}), openRecord: null };
+        return {
+          date: current?.date || data.record?.date,
+          record: data.record,
+          openRecord: null,
+          config: data.config || current?.config,
+        };
+      });
+      setOpenRecord(null);
       await load();
     } catch (error) {
       notify('error', errMsg(error));
@@ -165,7 +193,9 @@ export default function MarkAttendance() {
                         ? 'Day complete'
                         : hasCheckIn
                           ? "You're checked in"
-                          : 'Ready to start your day'}
+                          : openRecord
+                            ? 'Finish your open check-out'
+                            : 'Ready to start your day'}
                 </h2>
                 <p className="muted small-text">
                   {today?.config
@@ -176,9 +206,14 @@ export default function MarkAttendance() {
                 </p>
               </div>
               <div className="checkin-actions">
-                {!hasCheckIn && !onLeave && !isAbsent && (
+                {!hasCheckIn && !onLeave && !isAbsent && !openRecord && (
                   <button className="primary" onClick={checkIn} disabled={busy}>
                     <LogIn size={16} /> {busy ? 'Saving...' : 'Check in'}
+                  </button>
+                )}
+                {openRecord && !hasCheckIn && (
+                  <button className="primary" onClick={checkOut} disabled={busy}>
+                    <LogOut size={16} /> {busy ? 'Saving...' : 'Check out now'}
                   </button>
                 )}
                 {hasCheckIn && !hasCheckOut && (
@@ -196,13 +231,17 @@ export default function MarkAttendance() {
               <div>
                 <span>Check in</span>
                 <b>{formatTime(todayRecord?.checkIn)}</b>
-                {todayRecord?.checkInAt && <small>exact {formatExactTime(todayRecord.checkInAt)}</small>}
+                {todayRecord?.checkInAt && (
+                  <small>exact {formatExactTime(todayRecord.checkInAt, today?.config?.timeZone)}</small>
+                )}
               </div>
               <div>
                 <span>Check out</span>
                 <b>{formatTime(todayRecord?.checkOut)}</b>
                 {todayRecord?.checkOutAt && (
-                  <small>exact {formatExactTime(todayRecord.checkOutAt)}</small>
+                  <small>
+                    exact {formatExactTime(todayRecord.checkOutAt, today?.config?.timeZone)}
+                  </small>
                 )}
               </div>
               <div>
@@ -218,6 +257,21 @@ export default function MarkAttendance() {
                 <Status status={todayRecord?.status || 'Unmarked'} />
               </div>
             </div>
+
+            {openRecord && !hasCheckIn && (
+              <div className="late-reason-box open-checkout-box">
+                <div>
+                  <p className="late-reason-title">
+                    <Clock size={14} /> Open check-out
+                  </p>
+                  <p className="muted small-text">
+                    You checked in on {formatDate(openRecord.date)} at{' '}
+                    {formatTime(openRecord.checkIn)} and never checked out. Close that day before
+                    starting a new one.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {todayRecord?.late && (
               <div className="late-reason-box">
@@ -315,14 +369,16 @@ export default function MarkAttendance() {
                       <td>
                         {formatTime(record.checkIn)}
                         {record.checkInAt && (
-                          <small className="cell-note">exact {formatExactTime(record.checkInAt)}</small>
+                          <small className="cell-note">
+                            exact {formatExactTime(record.checkInAt, today?.config?.timeZone)}
+                          </small>
                         )}
                       </td>
                       <td>
                         {formatTime(record.checkOut)}
                         {record.checkOutAt && (
                           <small className="cell-note">
-                            exact {formatExactTime(record.checkOutAt)}
+                            exact {formatExactTime(record.checkOutAt, today?.config?.timeZone)}
                           </small>
                         )}
                       </td>

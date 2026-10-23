@@ -1,4 +1,9 @@
-import { getAttendanceConfig, isValidTime, TIME_PATTERN } from '../config/attendance.js';
+import {
+  getAttendanceConfig,
+  getCompanyTimeZone,
+  isValidTime,
+  TIME_PATTERN,
+} from '../config/attendance.js';
 
 /** "09:30" -> 570. Returns null for empty or malformed values. */
 export function toMinutes(value) {
@@ -18,21 +23,70 @@ export function hoursLabel(minutes) {
   return `${hours}h ${String(rest).padStart(2, '0')}m`;
 }
 
-export const todayKey = (date = new Date()) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+// Intl formatters are expensive to build, so cache one per timezone.
+const formatterCache = new Map();
+function zonedFormatter(timeZone) {
+  let formatter = formatterCache.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    formatterCache.set(timeZone, formatter);
+  }
+  return formatter;
+}
 
-export const monthKey = (date = new Date()) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+/** Calendar/clock parts of an instant in the company timezone. */
+export function companyParts(date = new Date(), timeZone = getCompanyTimeZone()) {
+  const parts = {};
+  for (const part of zonedFormatter(timeZone).formatToParts(date)) {
+    if (part.type !== 'literal') parts[part.type] = part.value;
+  }
+  // Some engines report midnight as "24" when hour12 is false.
+  const hour = parts.hour === '24' ? '00' : parts.hour;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
 
-export const nowTime = (date = new Date()) =>
-  `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+const pad = (value) => String(value).padStart(2, '0');
 
-/** Local wall-clock minutes (with seconds) from an exact captured timestamp. */
+/** YYYY-MM-DD in the company timezone. */
+export const todayKey = (date = new Date()) => {
+  const { year, month, day } = companyParts(date);
+  return `${year}-${pad(month)}-${pad(day)}`;
+};
+
+export const monthKey = (date = new Date()) => {
+  const { year, month } = companyParts(date);
+  return `${year}-${pad(month)}`;
+};
+
+/** HH:mm in the company timezone. */
+export const nowTime = (date = new Date()) => {
+  const { hour, minute } = companyParts(date);
+  return `${pad(hour)}:${pad(minute)}`;
+};
+
+/** Company-local minutes (with seconds) from an exact captured timestamp. */
 function minutesOfDay(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+  const { hour, minute, second } = companyParts(date);
+  return hour * 60 + minute + second / 60;
 }
 
 /**
@@ -51,20 +105,38 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
   const outMinutes = exactOut ?? toMinutes(checkOut);
   const isPresent = status === 'Present';
 
-  const workedMinutes =
-    exactIn != null && exactOut != null
-      ? exactOut >= exactIn
-        ? Math.round(exactOut - exactIn)
-        : null
-      : inMinutes != null && outMinutes != null && outMinutes >= inMinutes
-        ? outMinutes - inMinutes
-        : null;
+  // Exact instants are compared as full timestamps, so a night shift that ends
+  // after midnight still produces the correct worked hours.
+  const inInstant = record.checkInAt ? new Date(record.checkInAt) : null;
+  const outInstant = record.checkOutAt ? new Date(record.checkOutAt) : null;
+  const hasExactSpan =
+    inInstant &&
+    outInstant &&
+    !Number.isNaN(inInstant.getTime()) &&
+    !Number.isNaN(outInstant.getTime()) &&
+    outInstant >= inInstant;
+
+  const workedMinutes = hasExactSpan
+    ? Math.round((outInstant - inInstant) / 60000)
+    : inMinutes != null && outMinutes != null && outMinutes >= inMinutes
+      ? Math.round(outMinutes - inMinutes)
+      : null;
+
+  // A span that crosses the company date cannot be judged against a single-day
+  // shift window, so the late/early flags are left clear for those rows.
+  const spansDates =
+    inInstant &&
+    outInstant &&
+    !Number.isNaN(inInstant.getTime()) &&
+    !Number.isNaN(outInstant.getTime()) &&
+    todayKey(inInstant) !== todayKey(outInstant);
 
   const shiftStart = toMinutes(config.shiftStart);
   const shiftEnd = toMinutes(config.shiftEnd);
 
-  const late = isPresent && inMinutes != null && inMinutes > shiftStart + config.graceMinutes;
-  const earlyCheckout = isPresent && outMinutes != null && outMinutes < shiftEnd;
+  const late =
+    isPresent && !spansDates && inMinutes != null && inMinutes > shiftStart + config.graceMinutes;
+  const earlyCheckout = isPresent && !spansDates && outMinutes != null && outMinutes < shiftEnd;
   const missingCheckOut = isPresent && inMinutes != null && outMinutes == null;
   const missingCheckIn = isPresent && inMinutes == null && outMinutes != null;
 

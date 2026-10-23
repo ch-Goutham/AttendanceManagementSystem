@@ -20,17 +20,21 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 ### Access rules
 - Admins can view and manage all employees' attendance and leave.
 - Employees can only see their own attendance, leave and permission records.
-- Employee accounts cannot reach the Admin Screen (`/admin` redirects, and every admin API is protected).
+- The admin console is opened only through the unlisted `/admin-login` route. The base URL and `/login` always show the employee portal; a stored admin session never redirects the base URL into the console.
+- The admin UI is rendered only after `GET /api/auth/me` confirms the stored token is still valid and the account role is `admin`. Expired, tampered or removed sessions are cleared and sent back to a login page. Every admin API is also protected server-side.
+- Employees cannot reach the admin screen: `/admin` redirects them to their own workspace, and every admin API returns `403`.
 - Admins create employee credentials; there is no public employee sign-up and admins cannot create other admin accounts from the Employees page.
 - Admin sign-up is available at the unlisted `/admin-signup` route for first-admin bootstrap. The route is not linked from any page, but anyone who knows the URL can create an admin account. Keep the URL private, or add an invite/allowlist before using this in production.
 
 ### Attendance rules
 - One global shift, configured in `server/.env`:
+  - `COMPANY_TIMEZONE` (default `Asia/Kolkata`): dates and times follow the office clock even when the API host runs in UTC
   - `SHIFT_START` / `SHIFT_END` (default `09:30`–`18:00`)
   - `GRACE_MINUTES` (default `10`): late = check-in after shift start + grace
   - `HALF_DAY_MINUTES` (default `240`): worked time below this becomes a half day
   - `WORKING_DAYS` (default `1,2,3,4,5,6` = Monday–Saturday, `0` = Sunday)
 - Admins can override the day type when correcting a record.
+- A check-out that happens after midnight (or an earlier forgotten check-out) closes the open record from the previous day when it is at most 20 hours old.
 - Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
 - Times are stored as company-local `HH:mm` alongside the `YYYY-MM-DD` date, so there is no timezone date drift.
 - Check-in and check-out also store the exact server instant (`checkInAt`, `checkOutAt`) with seconds; the `HH:mm` values are the display/edit form.
@@ -213,6 +217,7 @@ Environment variables:
 ```env
 MONGO_URI=<MongoDB Atlas connection string>
 JWT_SECRET=<long random string>
+COMPANY_TIMEZONE=Asia/Kolkata
 CLIENT_URL=https://client-ams.vercel.app
 APP_URL=https://client-ams.vercel.app
 GOOGLE_CLIENT_ID=<Google OAuth web client ID>
