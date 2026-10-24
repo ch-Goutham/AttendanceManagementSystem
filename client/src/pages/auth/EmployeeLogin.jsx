@@ -61,8 +61,9 @@ export default function EmployeeLogin({ onAuth, currentUser }) {
 
         {currentUser?.role === 'admin' && (
           <div className="auth-note">
-            Signed in as <b>{currentUser.name}</b> (administrator). Signing in below replaces that
-            session. <Link to="/admin">Open admin console</Link>
+            Signed in as <b>{currentUser.name}</b> (administrator). Signing in here opens the
+            employee portal in this tab; your admin session stays signed in on its own tab.{' '}
+            <Link to="/admin">Open admin console</Link>
           </div>
         )}
 

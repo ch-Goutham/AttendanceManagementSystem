@@ -21,18 +21,20 @@ router.get('/', adminOnly, async (_req, res, next) => {
     // Run every independent query at once. Attendance is filtered against the
     // active employee IDs in memory instead of making the dashboard wait for a
     // second database round trip.
-    const [activeEmployees, allRecords, pendingPermissions, pendingLeaves] = await Promise.all([
-      User.find({ role: 'employee', isActive: { $ne: false } }).select('_id').lean(),
-      Attendance.find({ date }).lean(),
-      Permission.find({ status: 'Pending' })
-        .populate('employee', 'name email employeeCode department')
-        .sort({ date: 1, startTime: 1, createdAt: 1 })
-        .lean(),
-      Leave.find({ status: 'Pending' })
-        .populate('employee', 'name email employeeCode department')
-        .sort({ createdAt: 1 })
-        .lean()
-    ]);
+    const [activeEmployees, allRecords, approvedPermissions, pendingPermissions, pendingLeaves] =
+      await Promise.all([
+        User.find({ role: 'employee', isActive: { $ne: false } }).select('_id').lean(),
+        Attendance.find({ date }).lean(),
+        Permission.find({ date, status: 'Approved' }).select('employee').lean(),
+        Permission.find({ status: 'Pending' })
+          .populate('employee', 'name email employeeCode department')
+          .sort({ date: 1, startTime: 1, createdAt: 1 })
+          .lean(),
+        Leave.find({ status: 'Pending' })
+          .populate('employee', 'name email employeeCode department')
+          .sort({ createdAt: 1 })
+          .lean()
+      ]);
 
     const activeIds = new Set(activeEmployees.map((employee) => String(employee._id)));
     const records = allRecords.filter((record) => activeIds.has(String(record.employee)));
@@ -40,14 +42,21 @@ router.get('/', adminOnly, async (_req, res, next) => {
     const config = getAttendanceConfig();
     const shaped = records.map((record) => serializeAttendance(record, config));
     const present = shaped.filter((record) => record.status === 'Present');
-    const absent = shaped.filter((record) => record.status === 'Absent').length;
     const onLeave = shaped.filter((record) => record.status === 'Leave').length;
     const lateArrivals = present.filter((record) => record.late).length;
+
+    // One employee counts once even when they have several approved permission
+    // windows today.
+    const permissionToday = new Set(
+      approvedPermissions
+        .map((permission) => String(permission.employee))
+        .filter((employeeId) => activeIds.has(employeeId))
+    ).size;
 
     res.json({
       totalEmployees: activeIds.size,
       presentToday: present.length,
-      absentToday: absent,
+      permissionToday,
       onLeaveToday: onLeave,
       lateArrivals,
       pendingPermissionCount: pendingPermissions.length,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, UserCheck, UserX, CalendarOff, Clock, Check, X, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Users, UserCheck, CalendarOff, Clock, Check, X, RefreshCw, ShieldCheck } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -107,11 +107,10 @@ export default function Dashboard({ user, onNavigate }) {
               onClick: () => onNavigate('attendance'),
             })}
             {StatCard({
-              label: 'Absent Today',
-              value: data.absentToday,
-              icon: <UserX size={19} />,
-              foot: 'Marked absent',
-              onClick: () => onNavigate('attendance'),
+              label: 'Permission Today',
+              value: data.permissionToday ?? 0,
+              icon: <ShieldCheck size={19} />,
+              foot: 'Approved permission',
             })}
             {StatCard({
               label: 'On Leave Today',

@@ -11,7 +11,15 @@ import ForgotPasswordPage from './pages/auth/ForgotPassword';
 import ResetPasswordPage from './pages/auth/ResetPassword';
 import Terms from './pages/Terms';
 import api from './api';
-import { clearAuth, readAuth, saveAuth, updateAuthUser } from './lib/authStorage';
+import {
+  clearAuth,
+  currentPortal,
+  getSessionKey,
+  portalForPath,
+  readAuth,
+  saveAuth,
+  updateAuthUser,
+} from './lib/authStorage';
 import { clearEmployeeCache } from './lib/employeeDirectory';
 import { clearPageCache } from './lib/pageCache';
 import Dashboard from './pages/admin/Dashboard';
@@ -75,7 +83,7 @@ function App() {
         const user = data?.user;
         const stored = readAuth();
         if (!user || !stored || stored.user.role !== user.role) {
-          clearAuth();
+          clearAuth(stored?.user?.role || currentPortal());
           clearClientCaches();
           setAuth(null);
           return;
@@ -89,7 +97,7 @@ function App() {
         // A temporary outage should not destroy a session that is probably
         // still valid; only an auth rejection clears it.
         const status = error.response?.status;
-        if (status === 401 || status === 403) clearAuth();
+        if (status === 401 || status === 403) clearAuth(currentPortal());
         clearClientCaches();
         setAuth(null);
       })
@@ -116,10 +124,16 @@ function App() {
     return () => window.removeEventListener('attendance:auth-expired', onExpired);
   }, [navigate]);
 
-  // Keep tabs in sync when the session is replaced or cleared in another tab.
+  // Keep tabs in sync when this tab's portal session is replaced or cleared in
+  // another tab. Writes to the other portal's slot are ignored, which is what
+  // lets an admin tab and an employee tab stay signed in side by side.
   useEffect(() => {
-    const onStorage = () => {
-      const next = readAuth();
+    const onStorage = (event) => {
+      const portal = portalForPath();
+      if (!portal) return;
+      // `event.key === null` means storage.clear(), so re-read in that case.
+      if (event?.key != null && event.key !== getSessionKey(portal)) return;
+      const next = readAuth(portal);
       clearClientCaches();
       setAuth(next?.user || null);
       setActivePage(DEFAULT_PAGE[next?.user?.role] || 'dashboard');
@@ -129,8 +143,9 @@ function App() {
   }, []);
 
   const signOut = () => {
-    const wasAdmin = authRef.current?.role === 'admin';
-    clearAuth();
+    const role = authRef.current?.role || currentPortal();
+    const wasAdmin = role === 'admin';
+    clearAuth(role);
     clearClientCaches();
     setAuth(null);
     setActivePage('dashboard');

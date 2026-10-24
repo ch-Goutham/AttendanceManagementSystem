@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Pencil } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
 import { Status, DayFlag } from '../../components/Ui';
-import { currentMonth, formatDate, formatTime, sessionSummary } from '../../lib/dates';
+import { currentMonth, formatDate, formatTime } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
 import { getEmployees } from '../../lib/employeeDirectory';
 import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
@@ -112,6 +112,38 @@ export default function Attendance() {
 
   const filtersActive = !!filters.date || !!filters.employeeId;
 
+  // One row per check-in/check-out session so a day with several sessions is
+  // readable at a glance. The parent day record stays attached for editing.
+  // Rows are ordered by employee name A-Z, then newest date first, then session.
+  const rows = useMemo(() => {
+    const list = [];
+    for (const record of records) {
+      const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+      if (!sessions.length) {
+        list.push({ key: record.id, record, session: null, sessionNumber: 0 });
+        continue;
+      }
+      sessions.forEach((session, index) => {
+        list.push({
+          key: `${record.id}:${session.id || index}`,
+          record,
+          session,
+          sessionNumber: index + 1,
+        });
+      });
+    }
+    return list.sort((a, b) => {
+      const byName = (a.record.employee?.name || '').localeCompare(
+        b.record.employee?.name || '',
+        undefined,
+        { sensitivity: 'base' }
+      );
+      if (byName) return byName;
+      if (a.record.date !== b.record.date) return a.record.date < b.record.date ? 1 : -1;
+      return a.sessionNumber - b.sessionNumber;
+    });
+  }, [records]);
+
   return (
     <div className="page-content">
       <div className="page-heading">
@@ -120,7 +152,7 @@ export default function Attendance() {
           <h1>Attendance</h1>
           <p className="muted">
             View every employee&apos;s check-in and check-out times, day type and late or early
-            flags. Correct a record when needed.
+            flags. Each session is listed on its own row; correct a record when needed.
           </p>
         </div>
       </div>
@@ -183,6 +215,7 @@ export default function Attendance() {
                 <tr>
                   <th>Employee</th>
                   <th>Date</th>
+                  <th>Session</th>
                   <th>Check in</th>
                   <th>Check out</th>
                   <th>Hours</th>
@@ -194,64 +227,92 @@ export default function Attendance() {
                 </tr>
               </thead>
               <tbody>
-                {records.map((record) => (
-                  <tr key={record.id}>
-                    <td>
-                      <div className="employee-cell">
-                        <div className="avatar tiny">{initials(record.employee?.name)}</div>
-                        <div>
-                          <b>{record.employee?.name || 'Employee'}</b>
-                          <small>{record.employee?.department || record.employee?.email}</small>
+                {rows.map(({ key, record, session, sessionNumber }) => {
+                  // Day-level cells render once, on the first session row.
+                  const isDayStart = sessionNumber <= 1;
+                  const sessionCount = record.sessionCount ?? (record.sessions?.length || 0);
+                  const multiSession = sessionCount > 1;
+                  return (
+                    <tr key={key}>
+                      <td>
+                        <div className="employee-cell">
+                          <div className="avatar tiny">{initials(record.employee?.name)}</div>
+                          <div>
+                            <b>{record.employee?.name || 'Employee'}</b>
+                            <small>{record.employee?.department || record.employee?.email}</small>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>{formatDate(record.date)}</td>
-                    <td>
-                      {formatTime(record.checkIn)}
-                      {record.sessionCount > 1 && (
-                        <small className="cell-note" title={sessionSummary(record)}>
-                          {record.sessionCount} sessions
-                        </small>
-                      )}
-                    </td>
-                    <td>{formatTime(record.checkOut)}</td>
-                    <td>{record.hoursLabel}</td>
-                    <td>
-                      <Status status={record.status} />
-                    </td>
-                    <td>{record.status === 'Present' ? record.dayType : '—'}</td>
-                    <td>
-                      <span
-                        className={`location-badge ${
-                          record.location === 'Work from home' ? 'wfh' : 'office'
-                        }`}
-                      >
-                        {record.location || '—'}
-                      </span>
-                    </td>
-                    <td>
-                      <DayFlag
-                        late={record.late}
-                        earlyCheckout={record.earlyCheckout}
-                        missingCheckOut={record.missingCheckOut}
-                        missingCheckIn={record.missingCheckIn}
-                      />
-                      {record.late && record.lateReason && (
-                        <small className="cell-note" title={record.lateReason}>
-                          Reason: {record.lateReason}
-                        </small>
-                      )}
-                    </td>
-                    <td className="col-action">
-                      <button className="link-btn" onClick={() => startEdit(record)}>
-                        <Pencil size={13} /> Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!records.length && (
+                      </td>
+                      <td>{isDayStart ? formatDate(record.date) : ''}</td>
+                      <td>
+                        {session ? (
+                          <>
+                            <b>Session {sessionNumber}</b>
+                            {multiSession && (
+                              <small className="cell-note">of {sessionCount}</small>
+                            )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>{formatTime(session?.checkIn)}</td>
+                      <td>{formatTime(session?.checkOut)}</td>
+                      <td>
+                        {session ? session.hoursLabel : '—'}
+                        {isDayStart && multiSession && (
+                          <small className="cell-note">Day total: {record.hoursLabel}</small>
+                        )}
+                      </td>
+                      <td>{isDayStart ? <Status status={record.status} /> : ''}</td>
+                      <td>{isDayStart ? (record.status === 'Present' ? record.dayType : '—') : ''}</td>
+                      <td>
+                        {isDayStart ? (
+                          <span
+                            className={`location-badge ${
+                              record.location === 'Work from home' ? 'wfh' : 'office'
+                            }`}
+                          >
+                            {record.location || '—'}
+                          </span>
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                      <td>
+                        {isDayStart ? (
+                          <>
+                            <DayFlag
+                              late={record.late}
+                              earlyCheckout={record.earlyCheckout}
+                              missingCheckOut={record.missingCheckOut}
+                              missingCheckIn={record.missingCheckIn}
+                            />
+                            {record.late && record.lateReason && (
+                              <small className="cell-note" title={record.lateReason}>
+                                Reason: {record.lateReason}
+                              </small>
+                            )}
+                          </>
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                      <td className="col-action">
+                        {isDayStart ? (
+                          <button className="link-btn" onClick={() => startEdit(record)}>
+                            <Pencil size={13} /> Edit
+                          </button>
+                        ) : (
+                          ''
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!rows.length && (
                   <tr>
-                    <td colSpan="10" className="empty">
+                    <td colSpan="11" className="empty">
                       No attendance records match these filters.
                     </td>
                   </tr>
@@ -269,6 +330,11 @@ export default function Attendance() {
             <p className="muted">
               {editing.employee?.name || 'Employee'} · {formatDate(editing.date)}
             </p>
+            {(editing.sessionCount || 0) > 1 && (
+              <p className="muted small-text">
+                This day has {editing.sessionCount} sessions. Changes here correct the whole day.
+              </p>
+            )}
             <form className="edit-form" onSubmit={saveEdit}>
               <label>
                 Status

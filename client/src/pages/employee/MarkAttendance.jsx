@@ -3,12 +3,12 @@ import {
   CalendarDays,
   CalendarOff,
   Clock,
+  FileText,
   LogIn,
   LogOut,
   MapPin,
   ShieldCheck,
   UserCheck,
-  UserX,
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
@@ -37,6 +37,7 @@ export default function MarkAttendance({ user }) {
   const [records, setRecords] = useState(
     () => readPageCache(recordsCacheKey(monthKey(new Date()))) || []
   );
+  const [permissionDays, setPermissionDays] = useState(0);
   const [today, setToday] = useState(initialToday || null);
   const [openRecord, setOpenRecord] = useState(initialToday?.openRecord || null);
   const [lateReason, setLateReason] = useState(initialToday?.record?.lateReason || '');
@@ -82,6 +83,25 @@ export default function MarkAttendance({ user }) {
 
   useEffect(() => {
     load();
+  }, [month]);
+
+  // Approved permission days for the selected month. Counting distinct dates
+  // means two approved windows on one day still show as a single day.
+  useEffect(() => {
+    let alive = true;
+    api
+      .get('/permissions', { params: { month, status: 'Approved' } })
+      .then(({ data }) => {
+        if (!alive) return;
+        const dates = new Set((data.permissions || []).map((permission) => permission.date));
+        setPermissionDays(dates.size);
+      })
+      .catch(() => {
+        if (alive) setPermissionDays(0);
+      });
+    return () => {
+      alive = false;
+    };
   }, [month]);
 
   const todayRecord = today?.record;
@@ -441,10 +461,10 @@ export default function MarkAttendance({ user }) {
             foot: `${summary.recordedPresent} recorded · ${summary.halfDays} half day(s)`,
           })}
           {StatCard({
-            label: 'Absent days',
-            value: summary.absent,
-            icon: <UserX size={19} />,
-            foot: 'Marked absent this month',
+            label: 'Permission days',
+            value: permissionDays,
+            icon: <FileText size={19} />,
+            foot: 'Approved permission days this month',
           })}
           {StatCard({
             label: 'Leave days',

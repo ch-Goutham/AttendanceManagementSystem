@@ -5,15 +5,15 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 ## Features
 
 ### Admin console (5 sections)
-- **Dashboard** — total employees, present today, absent today, on leave today and late arrivals.
+- **Dashboard** — total employees, present today, permission today, on leave today and late arrivals.
 - **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office or Work from home).
-- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections.
+- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row (with the day's total hours), ordered by employee name.
 - **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request. The admin dashboard also lists every pending permission request for quick approval.
 - **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, early logouts and leave days; Excel (`.xlsx`) and PDF downloads carry the same columns.
 
 ### Employee workspace
 - Dashboard with the employee's total leave and permission requests plus approved/pending/rejected status.
-- **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history and a monthly attendance percentage (half days count as 0.5, leave excluded).
+- **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history, approved permission days for the month and a monthly attendance percentage (half days count as 0.5, leave excluded).
 - **Permission** form with reason, start time, end time and auto-calculated total duration, plus request status.
 - **Apply Leave** form with reason, start date, end date, total leave days and approval status.
 
@@ -21,7 +21,8 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 - Admins can view and manage all employees' attendance and leave.
 - Employees can only see their own attendance, leave and permission records.
 - The admin console is opened only through the unlisted `/admin-login` route. The base URL and `/login` always show the employee portal; a stored admin session never redirects the base URL into the console.
-- The admin UI is rendered only after `GET /api/auth/me` confirms the stored token is still valid and the account role is `admin`. Expired, tampered or removed sessions are cleared and sent back to a login page. Every admin API is also protected server-side.
+- Each portal keeps its own session, so an admin can stay signed in on `/admin` in one tab while an employee is signed in on `/employee` in another. A tab always uses the token for the portal in its URL; signing out or an expired/revoked token affects only that portal, and `Remember me` is stored per portal.
+- The admin UI is rendered only after `GET /api/auth/me` confirms the portal's stored token is still valid and the account role is `admin`. Expired, tampered or removed sessions are cleared and sent back to a login page. Every admin API is also protected server-side.
 - Employees cannot reach the admin screen: `/admin` redirects them to their own workspace, and every admin API returns `403`.
 - Admins create employee credentials; there is no public employee sign-up and admins cannot create other admin accounts from the Employees page.
 - Admin sign-up is available at the unlisted `/admin-signup` route for first-admin bootstrap. The route is not linked from any page, but anyone who knows the URL can create an admin account. Keep the URL private, or add an invite/allowlist before using this in production.

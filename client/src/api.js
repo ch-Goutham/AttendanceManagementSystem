@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearAuth, getToken } from './lib/authStorage';
+import { clearAuth, currentPortal, getToken } from './lib/authStorage';
 
 // In development and preview, /api is proxied to the backend by Vite.
 // A separately hosted production build should set VITE_API_URL.
@@ -33,12 +33,13 @@ api.interceptors.response.use(
     const url = String(error.config?.url || '');
     const isAuthAttempt = AUTH_ATTEMPT_PATHS.some((path) => url.includes(path));
 
-    // A dead/revoked token must never leave the app looking signed in. Drop the
-    // session and let App.jsx move the user to the login page for their portal.
+    // A dead/revoked token must never leave the app looking signed in. Drop
+    // only this tab's portal session and let App.jsx move the user to the login
+    // page for that portal; the other portal's session in another tab stays.
     // This also covers a token that expired while the tab was already open,
     // where the request interceptor has already removed it from storage.
     if (status === 401 && !isAuthAttempt) {
-      clearAuth();
+      clearAuth(currentPortal());
       window.dispatchEvent(new Event('attendance:auth-expired'));
     }
 

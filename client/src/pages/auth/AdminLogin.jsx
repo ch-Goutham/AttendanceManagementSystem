@@ -61,8 +61,9 @@ export default function AdminLogin({ onAuth, currentUser }) {
 
         {currentUser && (
           <div className="auth-note">
-            Signed in as <b>{currentUser.name}</b> ({currentUser.role}). Signing in below replaces
-            that session. <Link to="/employee">Back to the employee workspace</Link>
+            Signed in as <b>{currentUser.name}</b> ({currentUser.role}). Signing in here opens the
+            admin console in this tab; your other session stays signed in on its own tab.{' '}
+            <Link to="/employee">Back to the employee workspace</Link>
           </div>
         )}
 
