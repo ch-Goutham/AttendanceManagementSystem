@@ -9,7 +9,10 @@ const api = axios.create({ baseURL: API_BASE_URL, timeout: 20000 });
 
 api.interceptors.request.use((config) => {
   const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const url = String(config.url || '');
+  // /health is public. Sending Authorization here would turn the periodic
+  // keep-alive check into a cross-origin preflight for no benefit.
+  if (token && !url.includes('/health')) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 

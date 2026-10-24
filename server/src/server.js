@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import employeeRoutes from './routes/employees.js';
@@ -13,6 +14,11 @@ import reportRoutes from './routes/reports.js';
 dotenv.config();
 
 const app = express();
+
+// JSON payloads (monthly attendance lists, reports) get much larger than the
+// Mongoose documents because employee fields repeat on every row. gzip keeps
+// those responses small over the network.
+app.use(compression());
 
 // API responses must not be cached. Without this, Express's ETag support lets
 // browsers revalidate a request and receive an empty 304, which Axios treats as
@@ -30,7 +36,11 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: allowedOrigins,
-  exposedHeaders: ['Content-Disposition']
+  exposedHeaders: ['Content-Disposition'],
+  // Authorization is a non-simple header, so the browser preflights every
+  // cross-origin API call. Cache the preflight for a day instead of paying an
+  // extra Vercel -> Render round trip before each page load.
+  maxAge: 86400
 }));
 
 app.use(express.json());
@@ -56,7 +66,13 @@ app.use((err, _req, res, _next) => {
 
 const port = process.env.PORT || 5000;
 
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, {
+  // Keep a small pool warm so page loads do not pay for a fresh Atlas
+  // connection each time a Render instance handles a burst of requests.
+  maxPoolSize: 10,
+  minPoolSize: 2,
+  serverSelectionTimeoutMS: 5000
+})
   .then(() => {
     console.log('MongoDB connected successfully');
 

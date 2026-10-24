@@ -85,7 +85,8 @@ router.get('/', async (req, res, next) => {
     const permissions = await Permission.find(query)
       .populate('employee', EMPLOYEE_FIELDS)
       .populate('reviewedBy', 'name')
-      .sort({ date: -1, startTime: -1, createdAt: -1 });
+      .sort({ date: -1, startTime: -1, createdAt: -1 })
+      .lean();
 
     res.json({ permissions: permissions.map(permissionShape) });
   } catch (e) {

@@ -19,7 +19,8 @@ function makeToken(user) {
 }
 function publicUser(user) {
   return { id: user._id, name: user.name, email: user.email, phone: user.phone || '',
-    role: user.role, employeeCode: user.employeeCode, department: user.department };
+    role: user.role, employeeCode: user.employeeCode, department: user.department,
+    location: user.location || 'Office' };
 }
 function httpError(status, message) {
   const error = new Error(message);

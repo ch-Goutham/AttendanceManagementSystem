@@ -18,4 +18,6 @@ const permissionSchema = new mongoose.Schema(
 );
 
 permissionSchema.index({ employee: 1, date: -1 });
+permissionSchema.index({ date: -1 });
+permissionSchema.index({ status: 1, date: -1 });
 export default mongoose.model('Permission', permissionSchema);

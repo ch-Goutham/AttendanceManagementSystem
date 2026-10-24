@@ -46,7 +46,8 @@ router.get('/', async (req, res, next) => {
     const leaves = await Leave.find(query)
       .populate('employee', 'name email employeeCode department')
       .populate('reviewedBy', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ leaves: leaves.map(leaveShape) });
   } catch (e) {
     next(e);

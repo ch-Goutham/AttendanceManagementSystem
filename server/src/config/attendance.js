@@ -6,6 +6,7 @@ dotenv.config();
 
 export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const WORK_LOCATIONS = ['Office', 'Work from home'];
 const FALLBACK_WORKING_DAYS = [1, 2, 3, 4, 5, 6];
 
 export const isValidTime = (value) => typeof value === 'string' && TIME_PATTERN.test(value);
@@ -13,6 +14,7 @@ export const isValidDate = (value) =>
   typeof value === 'string' &&
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
   !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+export const isValidLocation = (value) => WORK_LOCATIONS.includes(String(value || '').trim());
 
 /**
  * Company wall-clock timezone. Attendance dates and HH:mm values must follow
@@ -56,6 +58,9 @@ export function getAttendanceConfig() {
     shiftEnd: isValidTime(process.env.SHIFT_END) ? process.env.SHIFT_END : '18:00',
     graceMinutes: Math.max(0, numberFromEnv('GRACE_MINUTES', 10)),
     halfDayMinutes: Math.max(0, numberFromEnv('HALF_DAY_MINUTES', 240)),
+    // After a check-out the employee can start a new session once this many
+    // minutes have passed. 0 disables the cooldown.
+    recheckInCooldownMinutes: Math.max(0, numberFromEnv('RECHECKIN_COOLDOWN_MINUTES', 2)),
     workingDays: workingDaysFromEnv(process.env.WORKING_DAYS),
   };
 }

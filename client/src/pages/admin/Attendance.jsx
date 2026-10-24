@@ -4,8 +4,14 @@ import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
 import { Status, DayFlag } from '../../components/Ui';
-import { currentMonth, formatDate, formatTime } from '../../lib/dates';
+import { currentMonth, formatDate, formatTime, sessionSummary } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
+import { getEmployees } from '../../lib/employeeDirectory';
+import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
+
+const INITIAL_FILTERS = { month: currentMonth(), date: '', employeeId: '' };
+const attendanceKey = (filters) =>
+  `admin:attendance:${filters.month}|${filters.date || 'all'}|${filters.employeeId || 'all'}`;
 
 const EDIT_EMPTY = {
   status: 'Present',
@@ -13,40 +19,51 @@ const EDIT_EMPTY = {
   checkOut: '',
   dayType: '',
   note: '',
+  location: 'Office',
 };
 
 export default function Attendance() {
   const notify = useToast();
   const [employees, setEmployees] = useState([]);
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    month: currentMonth(),
-    date: '',
-    employeeId: '',
-  });
+  const [records, setRecords] = useState(
+    () => readPageCache(attendanceKey(INITIAL_FILTERS)) || []
+  );
+  const [loading, setLoading] = useState(
+    () => !readPageCache(attendanceKey(INITIAL_FILTERS))
+  );
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editBusy, setEditBusy] = useState(false);
 
   async function loadEmployees() {
-    const { data } = await api.get('/employees');
-    setEmployees((data.employees || []).filter((employee) => employee.role === 'employee'));
+    setEmployees(await getEmployees());
   }
 
-  async function load() {
-    setLoading(true);
+  async function load({ silent = false } = {}) {
+    const cacheKey = attendanceKey(filters);
+    const cached = readPageCache(cacheKey);
+    if (cached) {
+      setRecords(cached);
+      if (!silent) setLoading(false);
+    } else if (!silent) {
+      setRecords([]);
+      setLoading(true);
+    }
+
     try {
       const params = { month: filters.month };
       if (filters.date) params.date = filters.date;
       if (filters.employeeId) params.employeeId = filters.employeeId;
 
       const { data } = await api.get('/attendance', { params });
-      setRecords(data.records || []);
+      const nextRecords = data.records || [];
+      setRecords(nextRecords);
+      writePageCache(cacheKey, nextRecords);
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -66,6 +83,7 @@ export default function Attendance() {
       checkOut: record.checkOut || '',
       dayType: record.dayType || '',
       note: record.note || '',
+      location: record.location || 'Office',
     });
   }
 
@@ -79,10 +97,12 @@ export default function Attendance() {
         checkOut: editForm.status === 'Present' ? editForm.checkOut : '',
         dayType: editForm.status === 'Present' ? editForm.dayType : '',
         note: editForm.note,
+        location: editForm.location,
       });
       notify('success', `Attendance corrected for ${editing.employee?.name || 'employee'}.`);
       setEditing(null);
-      await load();
+      clearPageCache();
+      await load({ silent: true });
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -148,7 +168,7 @@ export default function Attendance() {
                 Clear filters
               </button>
             )}
-            <button className="icon-btn" onClick={load} title="Refresh" type="button">
+            <button className="icon-btn" onClick={() => load()} title="Refresh" type="button">
               <RefreshCw size={16} />
             </button>
           </div>
@@ -168,6 +188,7 @@ export default function Attendance() {
                   <th>Hours</th>
                   <th>Status</th>
                   <th>Day type</th>
+                  <th>Location</th>
                   <th>Flags</th>
                   <th className="col-action">Edit</th>
                 </tr>
@@ -185,13 +206,29 @@ export default function Attendance() {
                       </div>
                     </td>
                     <td>{formatDate(record.date)}</td>
-                    <td>{formatTime(record.checkIn)}</td>
+                    <td>
+                      {formatTime(record.checkIn)}
+                      {record.sessionCount > 1 && (
+                        <small className="cell-note" title={sessionSummary(record)}>
+                          {record.sessionCount} sessions
+                        </small>
+                      )}
+                    </td>
                     <td>{formatTime(record.checkOut)}</td>
                     <td>{record.hoursLabel}</td>
                     <td>
                       <Status status={record.status} />
                     </td>
                     <td>{record.status === 'Present' ? record.dayType : '—'}</td>
+                    <td>
+                      <span
+                        className={`location-badge ${
+                          record.location === 'Work from home' ? 'wfh' : 'office'
+                        }`}
+                      >
+                        {record.location || '—'}
+                      </span>
+                    </td>
                     <td>
                       <DayFlag
                         late={record.late}
@@ -214,7 +251,7 @@ export default function Attendance() {
                 ))}
                 {!records.length && (
                   <tr>
-                    <td colSpan="9" className="empty">
+                    <td colSpan="10" className="empty">
                       No attendance records match these filters.
                     </td>
                   </tr>
@@ -281,6 +318,17 @@ export default function Attendance() {
                   <option value="">Auto from hours</option>
                   <option value="Full day">Full day</option>
                   <option value="Half day">Half day</option>
+                </select>
+              </label>
+              <label className="edit-note">
+                Location
+                <select
+                  value={editForm.location}
+                  onChange={(event) => setEditForm({ ...editForm, location: event.target.value })}
+                >
+                  <option value="">Not set</option>
+                  <option value="Office">Office</option>
+                  <option value="Work from home">Work from home</option>
                 </select>
               </label>
               <label className="edit-note">

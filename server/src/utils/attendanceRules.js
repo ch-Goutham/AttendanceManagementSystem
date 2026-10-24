@@ -89,6 +89,57 @@ function minutesOfDay(value) {
   return hour * 60 + minute + second / 60;
 }
 
+function normalizeSession(session) {
+  return {
+    id: session._id ? String(session._id) : undefined,
+    checkIn: session.checkIn || '',
+    checkOut: session.checkOut || '',
+    checkInAt: session.checkInAt || null,
+    checkOutAt: session.checkOutAt || null
+  };
+}
+
+/**
+ * Every check-in/check-out pair for a record. Rows written before sessions
+ * existed fall back to their single top-level pair, so no migration is needed.
+ */
+export function attendanceSessions(record) {
+  const list = Array.isArray(record?.sessions) ? record.sessions.filter(Boolean) : [];
+  if (list.length) return list.map(normalizeSession);
+  if (record?.checkIn || record?.checkInAt || record?.checkOut || record?.checkOutAt) {
+    return [
+      normalizeSession({
+        checkIn: record.checkIn,
+        checkOut: record.checkOut,
+        checkInAt: record.checkInAt,
+        checkOutAt: record.checkOutAt
+      })
+    ];
+  }
+  return [];
+}
+
+/** Worked minutes for one pair; exact timestamps win over HH:mm values. */
+function sessionMinutes(session) {
+  const inInstant = session.checkInAt ? new Date(session.checkInAt) : null;
+  const outInstant = session.checkOutAt ? new Date(session.checkOutAt) : null;
+  if (
+    inInstant &&
+    outInstant &&
+    !Number.isNaN(inInstant.getTime()) &&
+    !Number.isNaN(outInstant.getTime()) &&
+    outInstant >= inInstant
+  ) {
+    return Math.round((outInstant - inInstant) / 60000);
+  }
+  const inMinutes = toMinutes(session.checkIn);
+  const outMinutes = toMinutes(session.checkOut);
+  if (inMinutes != null && outMinutes != null && outMinutes >= inMinutes) {
+    return outMinutes - inMinutes;
+  }
+  return null;
+}
+
 /**
  * Derived attendance facts. Nothing here is persisted except the final
  * `dayType`, so changing the shift in .env never leaves stale flags behind.
@@ -97,48 +148,43 @@ function minutesOfDay(value) {
  */
 export function computeAttendanceMetrics(record, config = getAttendanceConfig()) {
   const status = record.status;
-  const checkIn = record.checkIn || '';
-  const checkOut = record.checkOut || '';
-  const exactIn = minutesOfDay(record.checkInAt);
-  const exactOut = minutesOfDay(record.checkOutAt);
-  const inMinutes = exactIn ?? toMinutes(checkIn);
-  const outMinutes = exactOut ?? toMinutes(checkOut);
+  const sessions = attendanceSessions(record);
+  const first = sessions[0] || null;
+  const last = sessions[sessions.length - 1] || null;
+  const openSession = Boolean(last && !last.checkOut && !last.checkOutAt);
+  const lastCompleted = [...sessions].reverse().find((session) => session.checkOut || session.checkOutAt) || null;
+
   const isPresent = status === 'Present';
+  const firstIn = first ? (minutesOfDay(first.checkInAt) ?? toMinutes(first.checkIn)) : null;
+  const lastOut = lastCompleted
+    ? (minutesOfDay(lastCompleted.checkOutAt) ?? toMinutes(lastCompleted.checkOut))
+    : null;
 
-  // Exact instants are compared as full timestamps, so a night shift that ends
-  // after midnight still produces the correct worked hours.
-  const inInstant = record.checkInAt ? new Date(record.checkInAt) : null;
-  const outInstant = record.checkOutAt ? new Date(record.checkOutAt) : null;
-  const hasExactSpan =
-    inInstant &&
-    outInstant &&
-    !Number.isNaN(inInstant.getTime()) &&
-    !Number.isNaN(outInstant.getTime()) &&
-    outInstant >= inInstant;
+  // An open session has no checkout yet, so it contributes nothing until the
+  // employee closes it. Completed sessions are summed.
+  const workedSpans = sessions.map(sessionMinutes).filter((value) => value != null);
+  const workedMinutes = workedSpans.length ? workedSpans.reduce((sum, value) => sum + value, 0) : null;
 
-  const workedMinutes = hasExactSpan
-    ? Math.round((outInstant - inInstant) / 60000)
-    : inMinutes != null && outMinutes != null && outMinutes >= inMinutes
-      ? Math.round(outMinutes - inMinutes)
-      : null;
-
+  const firstInInstant = first?.checkInAt ? new Date(first.checkInAt) : null;
+  const lastOutInstant = lastCompleted?.checkOutAt ? new Date(lastCompleted.checkOutAt) : null;
   // A span that crosses the company date cannot be judged against a single-day
   // shift window, so the late/early flags are left clear for those rows.
   const spansDates =
-    inInstant &&
-    outInstant &&
-    !Number.isNaN(inInstant.getTime()) &&
-    !Number.isNaN(outInstant.getTime()) &&
-    todayKey(inInstant) !== todayKey(outInstant);
+    firstInInstant &&
+    lastOutInstant &&
+    !Number.isNaN(firstInInstant.getTime()) &&
+    !Number.isNaN(lastOutInstant.getTime()) &&
+    todayKey(firstInInstant) !== todayKey(lastOutInstant);
 
   const shiftStart = toMinutes(config.shiftStart);
   const shiftEnd = toMinutes(config.shiftEnd);
 
   const late =
-    isPresent && !spansDates && inMinutes != null && inMinutes > shiftStart + config.graceMinutes;
-  const earlyCheckout = isPresent && !spansDates && outMinutes != null && outMinutes < shiftEnd;
-  const missingCheckOut = isPresent && inMinutes != null && outMinutes == null;
-  const missingCheckIn = isPresent && inMinutes == null && outMinutes != null;
+    isPresent && !spansDates && firstIn != null && firstIn > shiftStart + config.graceMinutes;
+  const earlyCheckout =
+    isPresent && !openSession && !spansDates && lastOut != null && lastOut < shiftEnd;
+  const missingCheckOut = isPresent && openSession;
+  const missingCheckIn = isPresent && !openSession && firstIn == null && lastOut != null;
 
   const autoDayType =
     workedMinutes != null && workedMinutes < config.halfDayMinutes ? 'Half day' : 'Full day';
@@ -146,8 +192,10 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
   const dayWeight = isPresent ? (dayType === 'Half day' ? 0.5 : 1) : 0;
 
   return {
-    checkIn,
-    checkOut,
+    checkIn: first?.checkIn || '',
+    checkOut: lastCompleted?.checkOut || '',
+    checkInAt: first?.checkInAt || null,
+    checkOutAt: lastCompleted?.checkOutAt || null,
     dayType,
     workedMinutes,
     hours: minutesToHours(workedMinutes),
@@ -157,6 +205,17 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
     missingCheckOut,
     missingCheckIn,
     dayWeight,
+    sessions: sessions.map((session) => {
+      const minutes = sessionMinutes(session);
+      return {
+        ...session,
+        open: !session.checkOut && !session.checkOutAt,
+        minutes,
+        hoursLabel: hoursLabel(minutes)
+      };
+    }),
+    sessionCount: sessions.length,
+    isCheckedIn: openSession
   };
 }
 
@@ -164,10 +223,22 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
 export function serializeAttendance(record, config = getAttendanceConfig()) {
   const plain = record?.toObject ? record.toObject() : { ...record };
   const metrics = computeAttendanceMetrics(plain, config);
+  const cooldownMinutes = Number(config.recheckInCooldownMinutes) || 0;
+  const lastCheckOutAt = metrics.checkOutAt ? new Date(metrics.checkOutAt) : null;
+  const nextCheckInAt =
+    !metrics.isCheckedIn && lastCheckOutAt && cooldownMinutes > 0
+      ? new Date(lastCheckOutAt.getTime() + cooldownMinutes * 60000).toISOString()
+      : null;
+  const retryAfterSeconds = nextCheckInAt
+    ? Math.max(0, Math.ceil((new Date(nextCheckInAt).getTime() - Date.now()) / 1000))
+    : 0;
+
   return {
     ...plain,
     ...metrics,
-    id: plain._id ? String(plain._id) : undefined,
+    nextCheckInAt,
+    retryAfterSeconds,
+    id: plain._id ? String(plain._id) : undefined
   };
 }
 

@@ -17,6 +17,14 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'employee'], required: true },
   employeeCode: { type: String, trim: true, default: '' },
   department: { type: String, trim: true, default: '' },
+  // Default working location. The employee can override it for a single day
+  // when checking in (Attendance.location).
+  location: {
+    type: String,
+    enum: ['Office', 'Work from home'],
+    default: 'Office'
+  },
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
+userSchema.index({ role: 1 });
 export default mongoose.model('User', userSchema);

@@ -6,25 +6,29 @@ import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { durationLabel, formatDate, formatTime, timeToMinutes, todayKey } from '../../lib/dates';
 import { errMsg } from '../../lib/format';
+import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
 
 const EMPTY_FORM = { date: todayKey(), startTime: '', endTime: '', reason: '' };
+const CACHE_KEY = 'me:permissions';
 
 export default function ApplyPermission() {
   const notify = useToast();
   const [form, setForm] = useState(EMPTY_FORM);
-  const [permissions, setPermissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [permissions, setPermissions] = useState(() => readPageCache(CACHE_KEY) || []);
+  const [loading, setLoading] = useState(() => !readPageCache(CACHE_KEY));
   const [busy, setBusy] = useState(false);
 
-  async function loadPermissions() {
-    setLoading(true);
+  async function loadPermissions({ silent = false } = {}) {
+    if (!silent && !readPageCache(CACHE_KEY)) setLoading(true);
     try {
       const { data } = await api.get('/permissions');
-      setPermissions(data.permissions || []);
+      const nextPermissions = data.permissions || [];
+      setPermissions(nextPermissions);
+      writePageCache(CACHE_KEY, nextPermissions);
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -50,7 +54,8 @@ export default function ApplyPermission() {
       await api.post('/permissions', form);
       notify('success', 'Permission request submitted.');
       setForm({ ...EMPTY_FORM, date: form.date });
-      await loadPermissions();
+      clearPageCache();
+      await loadPermissions({ silent: true });
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -137,7 +142,7 @@ export default function ApplyPermission() {
               Every request you have made, newest first, with its approval status.
             </p>
           </div>
-          <button className="icon-btn" onClick={loadPermissions} title="Refresh" type="button">
+          <button className="icon-btn" onClick={() => loadPermissions()} title="Refresh" type="button">
             <RefreshCw size={16} />
           </button>
         </div>

@@ -6,10 +6,10 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 
 ### Admin console (5 sections)
 - **Dashboard** — total employees, present today, absent today, on leave today and late arrivals.
-- **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees.
+- **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office or Work from home).
 - **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections.
-- **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request.
-- **Reports** — monthly team report or individual employee report, with Excel (`.xlsx`) and PDF downloads.
+- **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request. The admin dashboard also lists every pending permission request for quick approval.
+- **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, early logouts and leave days; Excel (`.xlsx`) and PDF downloads carry the same columns.
 
 ### Employee workspace
 - Dashboard with the employee's total leave and permission requests plus approved/pending/rejected status.
@@ -32,10 +32,13 @@ A full-stack attendance and leave application built with MongoDB, Express, React
   - `SHIFT_START` / `SHIFT_END` (default `09:30`–`18:00`)
   - `GRACE_MINUTES` (default `10`): late = check-in after shift start + grace
   - `HALF_DAY_MINUTES` (default `240`): worked time below this becomes a half day
+  - `RECHECKIN_COOLDOWN_MINUTES` (default `2`): after checking out, how long before the employee can start another session
   - `WORKING_DAYS` (default `1,2,3,4,5,6` = Monday–Saturday, `0` = Sunday)
 - Admins can override the day type when correcting a record.
+- A day can contain more than one check-in/check-out session. After checking out, the employee can check in again once the cooldown has passed; all check-in times are kept and the day's hours are the sum of the sessions.
 - A check-out that happens after midnight (or an earlier forgotten check-out) closes the open record from the previous day when it is at most 20 hours old.
 - Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
+- Each employee has a default working location (Office or Work from home). The employee can choose a different location for a session at check-in; the admin sees the recorded location in the Attendance table.
 - Times are stored as company-local `HH:mm` alongside the `YYYY-MM-DD` date, so there is no timezone date drift.
 - Check-in and check-out also store the exact server instant (`checkInAt`, `checkOutAt`) with seconds; the `HH:mm` values are the display/edit form.
 
@@ -150,8 +153,9 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 - `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — password reset flow
 
 ### Employees (admin only)
-- `POST /api/employees` — create an employee account and login credentials
+- `POST /api/employees` — create an employee account and login credentials (`location` defaults to `Office`)
 - `GET /api/employees` — list employee accounts
+- `PATCH /api/employees/:id/location` — set the default location (`Office` or `Work from home`)
 - `PATCH /api/employees/:id/status` — activate/deactivate
 - `PATCH /api/employees/:id/password` — reset a password (8–72 chars with uppercase, lowercase, number and special character)
 - `DELETE /api/employees/:id` — permanently delete an employee and their records
@@ -159,7 +163,7 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 ### Attendance
 - `GET /api/attendance` — records; admin can filter by `employeeId`, `month` or `date`; employees are always scoped to their own records
 - `GET /api/attendance/today` — the signed-in employee's record for today
-- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason`
+- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason` and `location` (`Office` or `Work from home`). A new session is allowed after `RECHECKIN_COOLDOWN_MINUTES`; all sessions are returned in `sessions`.
 - `PATCH /api/attendance/today/late-reason` — employee adds/updates today's reason for a late check-in
 - `PATCH /api/attendance/:id` — **admin** corrects status, times, day type or note
 
@@ -174,7 +178,7 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 - `PATCH /api/permissions/:id/review` — admin approves/rejects
 
 ### Dashboard and reports
-- `GET /api/dashboard` — **admin** total employees, present today, absent today, on leave today and late arrivals
+- `GET /api/dashboard` — **admin** total employees, today's attendance headline numbers, and every pending permission and leave request
 - `GET /api/dashboard/me` — **employee** leave/permission totals, approval statuses and newest requests
 - `GET /api/reports/attendance?month=YYYY-MM&employeeId=` — JSON report preview
 - `GET /api/reports/attendance.xlsx?month=YYYY-MM&employeeId=` — Excel download
@@ -232,6 +236,18 @@ For password-reset email, **Resend is recommended**. Render free web services bl
 `CLIENT_URL` is the only origin allowed by CORS besides `http://localhost:5173`. If the frontend domain changes, update it and redeploy; otherwise every login and API call fails with a CORS error.
 
 Health check: `GET /api/health` returns `{"status":"ok"}`.
+
+### Loading performance
+
+The client keeps the last successful data for each page and refreshes it in the background, while CORS preflight responses are cached for 24 hours. Mutations clear those caches so approvals, attendance corrections and check-ins show fresh data.
+
+Render free web services spin down after inactivity, so the first request after a long idle period can still take 30–60 seconds. To remove that delay, either:
+
+- ping `https://<your-render-service>.onrender.com/api/health` every 5–10 minutes with an uptime service or scheduled job, or
+- use an always-on Render instance.
+
+For the lowest per-query latency, keep the Render service and the Atlas cluster in the same region.
+
 
 ## Notes before production
 Add email verification, audit logs, rate limiting, CSRF strategy if moving away from bearer tokens, an invite code or allowlist for `/admin-signup`, backups, and a company-specific holiday policy. Times are company-local wall-clock values; staff in other timezones would need per-employee timezone support. Password resets are admin-driven with an email fallback. This is a starter application, not a production security audit.

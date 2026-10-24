@@ -6,25 +6,29 @@ import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { daysBetween, formatDate } from '../../lib/dates';
 import { errMsg } from '../../lib/format';
+import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
 
 const EMPTY_FORM = { startDate: '', endDate: '', reason: '' };
+const CACHE_KEY = 'me:leaves';
 
 export default function ApplyLeave() {
   const notify = useToast();
   const [leaveForm, setLeaveForm] = useState(EMPTY_FORM);
-  const [leaves, setLeaves] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [leaves, setLeaves] = useState(() => readPageCache(CACHE_KEY) || []);
+  const [loading, setLoading] = useState(() => !readPageCache(CACHE_KEY));
   const [busy, setBusy] = useState(false);
 
-  async function loadLeaves() {
-    setLoading(true);
+  async function loadLeaves({ silent = false } = {}) {
+    if (!silent && !readPageCache(CACHE_KEY)) setLoading(true);
     try {
       const { data } = await api.get('/leaves');
-      setLeaves(data.leaves || []);
+      const nextLeaves = data.leaves || [];
+      setLeaves(nextLeaves);
+      writePageCache(CACHE_KEY, nextLeaves);
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -39,7 +43,8 @@ export default function ApplyLeave() {
       await api.post('/leaves', leaveForm);
       notify('success', 'Leave request submitted.');
       setLeaveForm(EMPTY_FORM);
-      await loadLeaves();
+      clearPageCache();
+      await loadLeaves({ silent: true });
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -115,7 +120,7 @@ export default function ApplyLeave() {
             <h2>My leave requests</h2>
             <p className="muted small-text">Every application you have made, newest first.</p>
           </div>
-          <button className="icon-btn" onClick={loadLeaves} title="Refresh" type="button">
+          <button className="icon-btn" onClick={() => loadLeaves()} title="Refresh" type="button">
             <RefreshCw size={16} />
           </button>
         </div>

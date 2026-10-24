@@ -17,8 +17,19 @@ import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { errMsg, initials, randomPassword } from '../../lib/format';
 import { passwordError } from '../../lib/password';
+import { clearEmployeeCache, getEmployees, patchCachedEmployee } from '../../lib/employeeDirectory';
+import { clearPageCache } from '../../lib/pageCache';
 
-const EMPTY_FORM = { name: '', email: '', phone: '', password: '', employeeCode: '', department: '' };
+const EMPTY_FORM = {
+  name: '',
+  email: '',
+  phone: '',
+  password: '',
+  employeeCode: '',
+  department: '',
+  location: 'Office',
+};
+const LOCATIONS = ['Office', 'Work from home'];
 
 export default function Employees() {
   const notify = useToast();
@@ -46,11 +57,10 @@ export default function Employees() {
     }
   }
 
-  async function load() {
+  async function load({ force = false } = {}) {
     setLoading(true);
     try {
-      const { data } = await api.get('/employees');
-      setEmployees((data.employees || []).filter((employee) => employee.role === 'employee'));
+      setEmployees(await getEmployees({ force }));
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -75,7 +85,9 @@ export default function Employees() {
       setForm(EMPTY_FORM);
       setShowForm(false);
       notify('success', 'Employee login created.');
-      await load();
+      clearEmployeeCache();
+      clearPageCache();
+      await load({ force: true });
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -87,8 +99,31 @@ export default function Employees() {
     try {
       await api.patch(`/employees/${id}/status`, { isActive });
       notify('success', `Account ${isActive ? 'reactivated' : 'deactivated'}.`);
-      await load();
+      clearEmployeeCache();
+      clearPageCache();
+      await load({ force: true });
     } catch (error) {
+      notify('error', errMsg(error));
+    }
+  }
+
+  async function updateLocation(id, location) {
+    const previous = employees;
+    const updated = employees.map((employee) =>
+      employee.id === id ? { ...employee, location } : employee
+    );
+    setEmployees(updated);
+    patchCachedEmployee({ id, location });
+    try {
+      const { data } = await api.patch(`/employees/${id}/location`, { location });
+      setEmployees((current) =>
+        current.map((employee) => (employee.id === id ? data.employee : employee))
+      );
+      notify('success', `Location set to ${data.employee?.location || location}.`);
+      clearPageCache();
+    } catch (error) {
+      setEmployees(previous);
+      clearEmployeeCache();
       notify('error', errMsg(error));
     }
   }
@@ -101,7 +136,9 @@ export default function Employees() {
         setResetId('');
         setTempPassword('');
       }
-      await load();
+      clearEmployeeCache();
+      clearPageCache();
+      await load({ force: true });
     } catch (error) {
       notify('error', errMsg(error));
     }
@@ -132,7 +169,14 @@ export default function Employees() {
     const term = search.trim().toLowerCase();
     if (!term) return employees;
     return employees.filter((employee) =>
-      [employee.name, employee.email, employee.phone, employee.employeeCode, employee.department]
+      [
+        employee.name,
+        employee.email,
+        employee.phone,
+        employee.employeeCode,
+        employee.department,
+        employee.location,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term))
     );
@@ -245,6 +289,19 @@ export default function Employees() {
                 )}
               </label>
             ))}
+            <label>
+              Location
+              <select
+                value={form.location}
+                onChange={(event) => setForm({ ...form, location: event.target.value })}
+              >
+                {LOCATIONS.map((location) => (
+                  <option key={location} value={location}>
+                    {location}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="form-actions">
               <button className="primary" disabled={saving}>
                 {saving ? 'Creating...' : 'Create employee'}
@@ -291,6 +348,7 @@ export default function Employees() {
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Department</th>
+                  <th>Location</th>
                   <th>Account</th>
                   <th className="col-action">Reset</th>
                   <th className="col-action">Access</th>
@@ -313,6 +371,20 @@ export default function Employees() {
                     <td>{employee.email}</td>
                     <td>{employee.phone || '—'}</td>
                     <td>{employee.department || '—'}</td>
+                    <td>
+                      <select
+                        className="inline-select"
+                        value={employee.location || 'Office'}
+                        onChange={(event) => updateLocation(employee.id, event.target.value)}
+                        title="Working location"
+                      >
+                        {LOCATIONS.map((location) => (
+                          <option key={location} value={location}>
+                            {location}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <Status status={employee.isActive === false ? 'Inactive' : 'Active'} />
                     </td>
@@ -377,7 +449,7 @@ export default function Employees() {
                 ))}
                 {!visible.length && (
                   <tr>
-                    <td colSpan="9" className="empty">
+                    <td colSpan="10" className="empty">
                       {employees.length
                         ? 'No employees match your search.'
                         : 'No employees yet. Add your first employee.'}

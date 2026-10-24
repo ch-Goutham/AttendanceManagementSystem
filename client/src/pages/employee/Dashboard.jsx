@@ -13,21 +13,21 @@ import Spinner from '../../components/Spinner';
 import { StatCard, Status } from '../../components/Ui';
 import { durationLabel, formatDate, formatTime } from '../../lib/dates';
 import { errMsg } from '../../lib/format';
+import { readPageCache, writePageCache } from '../../lib/pageCache';
+
+const CACHE_KEY = 'me:dashboard';
 
 export default function EmployeeDashboard({ user, onNavigate }) {
   const notify = useToast();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => readPageCache(CACHE_KEY));
 
   async function load() {
-    setLoading(true);
     try {
       const { data: payload } = await api.get('/dashboard/me');
       setData(payload);
+      writePageCache(CACHE_KEY, payload);
     } catch (error) {
       notify('error', errMsg(error));
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -57,7 +57,7 @@ export default function EmployeeDashboard({ user, onNavigate }) {
         </div>
       </div>
 
-      {loading || !data ? (
+      {!data ? (
         <Spinner label="Loading your dashboard..." />
       ) : (
         <>
@@ -104,7 +104,7 @@ export default function EmployeeDashboard({ user, onNavigate }) {
                 <button type="button" className="link-btn" onClick={() => onNavigate('leave')}>
                   View all <ArrowRight size={13} />
                 </button>
-                <button className="icon-btn" onClick={load} title="Refresh" type="button">
+                <button className="icon-btn" onClick={() => load()} title="Refresh" type="button">
                   <RefreshCw size={16} />
                 </button>
               </div>

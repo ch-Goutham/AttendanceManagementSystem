@@ -15,14 +15,14 @@ export const monthLabel = (month) => {
 };
 
 export const formatDate = (value) => {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 export const formatTime = (value) => {
-  if (!value || !/^\d{2}:\d{2}$/.test(value)) return '—';
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return '-';
   const [hours, minutes] = value.split(':').map(Number);
   const date = new Date(2000, 0, 1, hours, minutes);
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -41,7 +41,7 @@ export const formatExactTime = (value, timeZone) => {
 };
 
 export const durationLabel = (minutes) => {
-  if (minutes == null) return '—';
+  if (minutes == null) return 'â€”';
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   if (!hours) return `${rest}m`;
@@ -49,7 +49,7 @@ export const durationLabel = (minutes) => {
 };
 
 export const hoursLabel = (minutes) => {
-  if (minutes == null) return '—';
+  if (minutes == null) return 'â€”';
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return `${hours}h ${String(rest).padStart(2, '0')}m`;
@@ -67,4 +67,19 @@ export const timeToMinutes = (value) => {
   if (!/^\d{2}:\d{2}$/.test(value || '')) return null;
   const [hours, minutes] = value.split(':').map(Number);
   return hours * 60 + minutes;
+};
+
+/** "09:00â€“12:00 Â· 12:15â€“18:00" for a record with more than one session. */
+export const sessionSummary = (record) => {
+  const sessions = Array.isArray(record?.sessions) ? record.sessions : [];
+  if (sessions.length <= 1) return '';
+  return sessions
+    .map((session) => `${formatTime(session.checkIn)}â€“${session.checkOut ? formatTime(session.checkOut) : 'open'}`)
+    .join(' Â· ');
+};
+
+export const countdownLabel = (seconds) => {
+  const safe = Math.max(0, Math.ceil(Number(seconds) || 0));
+  const minutes = Math.floor(safe / 60);
+  return `${minutes}:${String(safe % 60).padStart(2, '0')}`;
 };

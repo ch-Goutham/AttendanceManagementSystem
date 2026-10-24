@@ -7,6 +7,11 @@ import Spinner from '../../components/Spinner';
 import { Status } from '../../components/Ui';
 import { formatDate, formatTime } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
+import { getEmployees } from '../../lib/employeeDirectory';
+import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
+
+const LEAVE_CACHE_KEY = 'admin:leaves';
+const PERMISSION_CACHE_KEY = 'admin:permissions';
 
 const STATUS_TABS = [
   { key: '', label: 'All requests' },
@@ -18,10 +23,16 @@ const STATUS_TABS = [
 export default function LeaveManagement() {
   const notify = useToast();
   const [view, setView] = useState('leaves');
-  const [leaves, setLeaves] = useState([]);
-  const [permissions, setPermissions] = useState([]);
+  const [leaves, setLeaves] = useState(() => readPageCache(LEAVE_CACHE_KEY) || []);
+  const [permissions, setPermissions] = useState(
+    () => readPageCache(PERMISSION_CACHE_KEY) || []
+  );
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(() => ({
+    leaves: Boolean(readPageCache(LEAVE_CACHE_KEY)),
+    permissions: Boolean(readPageCache(PERMISSION_CACHE_KEY)),
+  }));
+  const [loading, setLoading] = useState(() => !readPageCache(LEAVE_CACHE_KEY));
   const [statusTab, setStatusTab] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [confirm, setConfirm] = useState(null);
@@ -41,29 +52,49 @@ export default function LeaveManagement() {
     }
   }
 
-  async function load() {
-    setLoading(true);
+  async function load({ silent = false } = {}) {
+    const leavesView = view === 'leaves';
+    const cacheKey = leavesView ? LEAVE_CACHE_KEY : PERMISSION_CACHE_KEY;
+    const cached = readPageCache(cacheKey);
+
+    // Render the last visit immediately, then refresh it in the background.
+    if (cached) {
+      if (leavesView) setLeaves(cached);
+      else setPermissions(cached);
+      if (!silent) setLoading(false);
+    } else if (!silent) {
+      setLoading(true);
+    }
+
     try {
-      const [leavesResponse, permissionsResponse, employeesResponse] = await Promise.all([
-        api.get('/leaves'),
-        api.get('/permissions'),
-        api.get('/employees'),
+      // The employee directory and the visible request list are independent.
+      // Loading them together removes one network round trip from this page.
+      const [list, response] = await Promise.all([
+        getEmployees(),
+        api.get(leavesView ? '/leaves' : '/permissions'),
       ]);
-      setLeaves(leavesResponse.data.leaves || []);
-      setPermissions(permissionsResponse.data.permissions || []);
-      setEmployees(
-        (employeesResponse.data.employees || []).filter((employee) => employee.role === 'employee')
-      );
+      setEmployees(list);
+
+      const nextRows = leavesView
+        ? response.data.leaves || []
+        : response.data.permissions || [];
+      if (leavesView) setLeaves(nextRows);
+      else setPermissions(nextRows);
+      writePageCache(cacheKey, nextRows);
+      setLoaded((current) => ({
+        ...current,
+        [leavesView ? 'leaves' : 'permissions']: true,
+      }));
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     load();
-  }, []);
+  }, [view]);
 
   async function review(type, id, action) {
     try {
@@ -74,7 +105,8 @@ export default function LeaveManagement() {
           action === 'approve' ? 'approved' : 'rejected'
         }.`
       );
-      await load();
+      clearPageCache();
+      await load({ silent: true });
     } catch (error) {
       notify('error', errMsg(error));
     }
@@ -129,7 +161,9 @@ export default function LeaveManagement() {
           onClick={() => changeView('leaves')}
         >
           Leave requests
-          <span className={`tab-count ${leavePending ? 'badge-warn' : ''}`}>{leaves.length}</span>
+          <span className={`tab-count ${leavePending ? 'badge-warn' : ''}`}>
+            {loaded.leaves ? leaves.length : '—'}
+          </span>
         </button>
         <button
           type="button"
@@ -138,7 +172,7 @@ export default function LeaveManagement() {
         >
           Permission requests
           <span className={`tab-count ${permissionPending ? 'badge-warn' : ''}`}>
-            {permissions.length}
+            {loaded.permissions ? permissions.length : '—'}
           </span>
         </button>
       </div>
@@ -191,7 +225,7 @@ export default function LeaveManagement() {
                 Clear employee
               </button>
             )}
-            <button className="icon-btn" onClick={load} title="Refresh" type="button">
+            <button className="icon-btn" onClick={() => load()} title="Refresh" type="button">
               <RefreshCw size={16} />
             </button>
           </div>

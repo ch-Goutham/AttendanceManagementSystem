@@ -12,6 +12,8 @@ import ResetPasswordPage from './pages/auth/ResetPassword';
 import Terms from './pages/Terms';
 import api from './api';
 import { clearAuth, readAuth, saveAuth, updateAuthUser } from './lib/authStorage';
+import { clearEmployeeCache } from './lib/employeeDirectory';
+import { clearPageCache } from './lib/pageCache';
 import Dashboard from './pages/admin/Dashboard';
 import Employees from './pages/admin/Employees';
 import Attendance from './pages/admin/Attendance';
@@ -25,6 +27,11 @@ import EmployeeDashboard from './pages/employee/Dashboard';
 const DEFAULT_PAGE = { admin: 'dashboard', employee: 'dashboard' };
 const HOME_FOR_ROLE = { admin: '/admin', employee: '/employee' };
 
+function clearClientCaches() {
+  clearPageCache();
+  clearEmployeeCache();
+}
+
 function AdminWorkspace({ user, activePage, setActivePage }) {
   if (activePage === 'employees') return <Employees />;
   if (activePage === 'attendance') return <Attendance />;
@@ -34,7 +41,7 @@ function AdminWorkspace({ user, activePage, setActivePage }) {
 }
 
 function EmployeeWorkspace({ user, activePage, setActivePage }) {
-  if (activePage === 'mark') return <MarkAttendance />;
+  if (activePage === 'mark') return <MarkAttendance user={user} />;
   if (activePage === 'leave') return <ApplyLeave />;
   if (activePage === 'permission') return <ApplyPermission />;
   return <EmployeeDashboard user={user} onNavigate={setActivePage} />;
@@ -69,6 +76,7 @@ function App() {
         const stored = readAuth();
         if (!user || !stored || stored.user.role !== user.role) {
           clearAuth();
+          clearClientCaches();
           setAuth(null);
           return;
         }
@@ -82,6 +90,7 @@ function App() {
         // still valid; only an auth rejection clears it.
         const status = error.response?.status;
         if (status === 401 || status === 403) clearAuth();
+        clearClientCaches();
         setAuth(null);
       })
       .finally(() => {
@@ -98,6 +107,7 @@ function App() {
   useEffect(() => {
     const onExpired = () => {
       const wasAdmin = authRef.current?.role === 'admin';
+      clearClientCaches();
       setAuth(null);
       setActivePage('dashboard');
       navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
@@ -110,6 +120,7 @@ function App() {
   useEffect(() => {
     const onStorage = () => {
       const next = readAuth();
+      clearClientCaches();
       setAuth(next?.user || null);
       setActivePage(DEFAULT_PAGE[next?.user?.role] || 'dashboard');
     };
@@ -120,6 +131,7 @@ function App() {
   const signOut = () => {
     const wasAdmin = authRef.current?.role === 'admin';
     clearAuth();
+    clearClientCaches();
     setAuth(null);
     setActivePage('dashboard');
     navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
@@ -127,6 +139,7 @@ function App() {
 
   const onAuth = (data, remember = true) => {
     saveAuth(data, remember);
+    clearClientCaches();
     setAuth(data.user);
     setActivePage(DEFAULT_PAGE[data.user.role] || 'dashboard');
     navigate(HOME_FOR_ROLE[data.user.role] || '/login', { replace: true });

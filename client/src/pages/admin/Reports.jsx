@@ -4,56 +4,69 @@ import {
   FileSpreadsheet,
   FileText,
   RefreshCw,
-  CalendarDays,
   Users,
   UserRound,
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
-import { StatCard } from '../../components/Ui';
+import { getEmployees } from '../../lib/employeeDirectory';
 import { currentMonth, formatDate, formatTime } from '../../lib/dates';
 import { downloadBlob, errMsg, initials } from '../../lib/format';
+import { readPageCache, writePageCache } from '../../lib/pageCache';
 
-const summaryCards = (report) => [
-  ['Present days', report.totals.weightedPresent, `${report.totals.fullDays} full · ${report.totals.halfDays} half`],
-  ['Absent days', report.totals.absent, 'Excluded from leave'],
-  ['Leave days', report.totals.leave, 'Approved leave only'],
-  ['Late arrivals', report.totals.late, `${report.totals.earlyCheckout} early checkout(s)`],
-];
+const reportKey = (month, scope) => `admin:report:${month}|${scope || 'team'}`;
+
+const attendanceTone = (value) =>
+  value >= 90 ? 'good' : value >= 75 ? 'warn' : 'bad';
 
 export default function Reports() {
   const notify = useToast();
   const [month, setMonth] = useState(currentMonth());
   const [scope, setScope] = useState('');
   const [employees, setEmployees] = useState([]);
-  const [report, setReport] = useState(null);
+  const [report, setReport] = useState(() =>
+    readPageCache(reportKey(currentMonth(), ''))
+  );
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !readPageCache(reportKey(currentMonth(), ''))
+  );
   const [downloading, setDownloading] = useState('');
 
   useEffect(() => {
-    api
-      .get('/employees')
-      .then(({ data }) => {
-        setEmployees((data.employees || []).filter((employee) => employee.role === 'employee'));
+    let alive = true;
+    getEmployees()
+      .then((list) => {
+        if (alive) setEmployees(list);
       })
-      .catch((error) => notify('error', errMsg(error)));
+      .catch((loadError) => notify('error', errMsg(loadError)));
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  async function load() {
-    setLoading(true);
+  async function load({ silent = false } = {}) {
+    const cacheKey = reportKey(month, scope);
+    const cached = readPageCache(cacheKey);
+    if (cached) {
+      setReport(cached);
+      if (!silent) setLoading(false);
+    } else if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const params = { month };
       if (scope) params.employeeId = scope;
       const { data } = await api.get('/reports/attendance', { params });
       setReport(data);
+      writePageCache(cacheKey, data);
     } catch (loadError) {
       setReport(null);
       setError(errMsg(loadError));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -129,7 +142,7 @@ export default function Reports() {
               </option>
             ))}
           </select>
-          <button className="icon-btn" onClick={load} title="Refresh" type="button">
+          <button className="icon-btn" onClick={() => load()} title="Refresh" type="button">
             <RefreshCw size={16} />
           </button>
         </div>
@@ -191,189 +204,155 @@ export default function Reports() {
             {error || 'The backend did not return a report for this month.'}
           </p>
           <div className="report-error-actions">
-            <button type="button" className="primary" onClick={load}>
+            <button type="button" className="primary" onClick={() => load()}>
               <RefreshCw size={16} /> Retry
             </button>
           </div>
         </section>
-      ) : (
-        <>
-          <div className="stats-grid stats-five">
-            {summaryCards(report).map(([label, value, foot]) => (
-              <StatCard
-                key={label}
-                label={label}
-                value={value}
-                icon={<CalendarDays size={19} />}
-                foot={foot}
-              />
-            ))}
-            <StatCard
-              label="Attendance rate"
-              value={`${report.totals.attendancePercentage}%`}
-              icon={<FileText size={19} />}
-              foot="Half days count as 0.5"
-            />
+      ) : report.meta.scope === 'individual' ? (
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Daily attendance</h2>
+              <p className="muted small-text">
+                Every recorded day for {report.meta.employee.name} in {month}. Half days count as
+                0.5; leave is excluded from the attendance percentage.
+              </p>
+            </div>
+            <span
+              className={`percent-pill ${attendanceTone(
+                report.totals.attendancePercentage
+              )}`}
+              title="Half days count as 0.5; leave is excluded"
+            >
+              {report.totals.attendancePercentage}% attendance
+            </span>
           </div>
-
-          {report.meta.scope === 'individual' ? (
-            <section className="panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Daily attendance</h2>
-                  <p className="muted small-text">
-                    Every recorded day for {report.meta.employee.name} in {month}.
-                  </p>
-                </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Status</th>
-                      <th>Check in</th>
-                      <th>Check out</th>
-                      <th>Hours</th>
-                      <th>Day type</th>
-                      <th>Late</th>
-                      <th>Early out</th>
-                      <th>Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.days.map((day) => (
-                      <tr key={day.date}>
-                        <td>{formatDate(day.date)}</td>
-                        <td>{day.status}</td>
-                        <td>{formatTime(day.checkIn)}</td>
-                        <td>{formatTime(day.checkOut)}</td>
-                        <td>{day.hoursLabel}</td>
-                        <td>{day.status === 'Present' ? day.dayType : '—'}</td>
-                        <td>{day.late ? 'Yes' : 'No'}</td>
-                        <td>{day.earlyCheckout ? 'Yes' : 'No'}</td>
-                        <td className="reason-cell">{day.note || '—'}</td>
-                      </tr>
-                    ))}
-                    {!report.days.length && (
-                      <tr>
-                        <td colSpan="9" className="empty">
-                          No attendance recorded for this employee in {month}.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ) : (
-            <section className="panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Monthly attendance by employee</h2>
-                  <p className="muted small-text">
-                    Present days are weighted: a half day counts as 0.5. Leave is excluded from the rate.
-                  </p>
-                </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Employee</th>
-                      <th>Code</th>
-                      <th>Department</th>
-                      <th>Present</th>
-                      <th>Full</th>
-                      <th>Half</th>
-                      <th>Absent</th>
-                      <th>Leave</th>
-                      <th>Late</th>
-                      <th>Early out</th>
-                      <th>Attendance %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.rows.map((row) => (
-                      <tr key={row.employee.id}>
-                        <td>
-                          <div className="employee-cell">
-                            <div className="avatar tiny">{initials(row.employee.name)}</div>
-                            <div>
-                              <b>{row.employee.name}</b>
-                              <small>{row.employee.email}</small>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{row.employee.employeeCode || '—'}</td>
-                        <td>{row.employee.department || '—'}</td>
-                        <td>
-                          <b>{row.weightedPresent}</b>
-                        </td>
-                        <td>{row.fullDays}</td>
-                        <td>{row.halfDays}</td>
-                        <td>{row.absent}</td>
-                        <td>{row.leave}</td>
-                        <td>{row.late}</td>
-                        <td>{row.earlyCheckout}</td>
-                        <td>
-                          {row.recordedDays ? (
-                            <span className={`percent-pill ${row.attendancePercentage >= 90 ? 'good' : row.attendancePercentage >= 75 ? 'warn' : 'bad'}`}>
-                              {row.attendancePercentage}%
-                            </span>
-                          ) : (
-                            <span className="muted small-text">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {!report.rows.length && (
-                      <tr>
-                        <td colSpan="11" className="empty">
-                          No employees on record yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                  {report.rows.length > 0 && (
-                    <tfoot>
-                      <tr>
-                        <td>
-                          <b>Team total</b>
-                        </td>
-                        <td colSpan="2" />
-                        <td>
-                          <b>{report.totals.weightedPresent}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.fullDays}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.halfDays}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.absent}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.leave}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.late}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.earlyCheckout}</b>
-                        </td>
-                        <td>
-                          <b>{report.totals.attendancePercentage}%</b>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            </section>
-          )}
-        </>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Check in</th>
+                  <th>Check out</th>
+                  <th>Hours</th>
+                  <th>Day type</th>
+                  <th>Late</th>
+                  <th>Early out</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.days.map((day) => (
+                  <tr key={day.date}>
+                    <td>{formatDate(day.date)}</td>
+                    <td>{day.status}</td>
+                    <td>{formatTime(day.checkIn)}</td>
+                    <td>{formatTime(day.checkOut)}</td>
+                    <td>{day.hoursLabel}</td>
+                    <td>{day.status === 'Present' ? day.dayType : '—'}</td>
+                    <td>{day.late ? 'Yes' : 'No'}</td>
+                    <td>{day.earlyCheckout ? 'Yes' : 'No'}</td>
+                    <td className="reason-cell">{day.note || '—'}</td>
+                  </tr>
+                ))}
+                {!report.days.length && (
+                  <tr>
+                    <td colSpan="9" className="empty">
+                      No attendance recorded for this employee in {month}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Monthly attendance</h2>
+              <p className="muted small-text">
+                Full and half days come from attendance. Permission counts approved requests in the
+                selected month.
+              </p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Department</th>
+                  <th>Full day</th>
+                  <th>Half day</th>
+                  <th>Permission</th>
+                  <th>Early logout</th>
+                  <th>Leave</th>
+                  <th>Attendance %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.rows.map((row) => (
+                  <tr key={row.employee.id}>
+                    <td>
+                      <div className="employee-cell">
+                        <div className="avatar tiny">{initials(row.employee.name)}</div>
+                        <div>
+                          <b>{row.employee.name}</b>
+                          <small>{row.employee.email}</small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{row.employee.department || '—'}</td>
+                    <td>{row.fullDays}</td>
+                    <td>{row.halfDays}</td>
+                    <td>{row.permission}</td>
+                    <td>{row.earlyCheckout}</td>
+                    <td>{row.leave}</td>
+                    <td>{row.attendancePercentage}%</td>
+                  </tr>
+                ))}
+                {!report.rows.length && (
+                  <tr>
+                    <td colSpan="8" className="empty">
+                      No employees on record yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {report.rows.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td>
+                      <b>Team total</b>
+                    </td>
+                    <td />
+                    <td>
+                      <b>{report.totals.fullDays}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.halfDays}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.permission}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.earlyCheckout}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.leave}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.attendancePercentage}%</b>
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
