@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'employee'], required: true },
   employeeCode: { type: String, trim: true, default: '' },
   department: { type: String, trim: true, default: '' },
+  position: { type: String, trim: true, default: '' },
   // Default working location. The employee can override it for a single day
   // when checking in (Attendance.location).
   location: {

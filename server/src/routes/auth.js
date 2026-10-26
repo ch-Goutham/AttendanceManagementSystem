@@ -20,7 +20,8 @@ function makeToken(user) {
 function publicUser(user) {
   return { id: user._id, name: user.name, email: user.email, phone: user.phone || '',
     role: user.role, employeeCode: user.employeeCode, department: user.department,
-    location: user.location || 'Office' };
+    position: user.position || '', location: user.location || 'Office',
+    isActive: user.isActive !== false, createdAt: user.createdAt };
 }
 function httpError(status, message) {
   const error = new Error(message);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   CalendarDays,
+  ChevronRight,
   ClipboardCheck,
   LogOut,
   Menu,
@@ -35,12 +36,14 @@ const PAGE_TITLES = {
     attendance: 'Attendance',
     leaves: 'Leave Management',
     reports: 'Reports',
+    profile: 'Profile',
   },
   employee: {
     dashboard: 'Dashboard',
     mark: 'Mark Attendance',
     permission: 'Permission',
     leave: 'Apply Leave',
+    profile: 'Profile',
   },
 };
 
@@ -123,13 +126,23 @@ export default function Shell({ user, signOut, activePage, setActivePage, childr
         ))}
 
         <div className="side-bottom">
-          <div className="profile-chip">
+          <button
+            type="button"
+            className={`profile-chip profile-chip-button ${
+              activePage === 'profile' ? 'active' : ''
+            }`}
+            onClick={() => selectPage('profile')}
+            title="Open my profile"
+            aria-label="Open my profile"
+            aria-current={activePage === 'profile' ? 'page' : undefined}
+          >
             <div className="avatar">{initials(user.name)}</div>
             <div className="profile-info">
               <b>{user.name}</b>
               <small>{user.role === 'admin' ? 'Administrator' : 'Employee'}</small>
             </div>
-          </div>
+            <ChevronRight size={15} className="profile-chip-arrow" />
+          </button>
           <button className="logout" onClick={signOut}>
             <LogOut size={17} /> Sign out
           </button>

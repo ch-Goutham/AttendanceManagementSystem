@@ -420,3 +420,47 @@ img,svg{max-width:100%}
   .cell-note,.reason-cell{max-width:150px}
   .page-heading h1{font-size:20px}
 }
+
+/* ---------------------------------------------------------------------------
+ * Profile pages (admin and employee)
+ * ------------------------------------------------------------------------- */
+.profile-chip-button{width:100%;background:transparent;border:0;border-top:1px solid #34435a;border-radius:0;padding:20px 5px 16px;text-align:left;color:inherit}
+.profile-chip-button:hover{background:#1f2f47}
+.profile-chip-button.active{background:#2b3c58}
+.profile-chip-arrow{margin-left:auto;color:#8d9bb1;flex:0 0 auto;transition:color .15s ease}
+.profile-chip-button:hover .profile-chip-arrow,.profile-chip-button.active .profile-chip-arrow{color:#eaf0fb}
+.profile-hero{display:flex;align-items:center;gap:17px;padding:19px 20px;border:1px solid #e8edf4;border-radius:12px;background:linear-gradient(135deg,#f7fbf9 0%,#f8faff 100%);margin-bottom:18px;flex-wrap:wrap}
+.profile-avatar{width:62px;height:62px;border-radius:50%;background:#d9e8ff;color:#28548a;display:grid;place-items:center;font:700 22px Manrope,sans-serif;flex:0 0 auto}
+.profile-identity{min-width:0;flex:1}
+.profile-identity h2{font:700 20px Manrope,sans-serif;letter-spacing:-.4px;margin:0 0 3px;color:#1c2638}
+.profile-identity p{margin:0;color:#7c8799;font-size:12.5px;overflow-wrap:anywhere}
+.profile-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+.profile-badges .status{width:auto;justify-content:flex-start}
+.profile-role{display:inline-flex;align-items:center;padding:5px 9px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.profile-role.employee{color:#2b5bbd;background:#e9f1ff}
+.profile-role.admin{color:#5b4bd6;background:#eceaff}
+.profile-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+.profile-field{display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border:1px solid #e8edf4;border-radius:9px;background:#fbfcfe;min-width:0}
+.profile-field-icon{color:#8a96a9;flex:0 0 auto;margin-top:1px}
+.profile-field-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.profile-field-body>span{font-size:9.5px;letter-spacing:.55px;text-transform:uppercase;color:#98a2b2;font-weight:700}
+.profile-field-body>b{font-size:12.5px;color:#2b3548;font-weight:600;overflow-wrap:anywhere;line-height:1.45}
+.profile-field-body .status{width:auto;justify-content:flex-start}
+.profile-note{margin:16px 0 0;padding:11px 13px;border-radius:8px;background:#eef3ff;color:#2b5bbd;font-size:12px;line-height:1.5}
+.profile-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;margin-bottom:18px}
+.profile-picker .search-field{height:40px}
+.profile-picker .search-field input{max-width:none;width:100%;font-size:12px}
+.profile-picker select{height:40px;border:1px solid #dfe5ee;border-radius:7px;background:#fff;padding:0 11px;color:#253149;outline:none;min-width:0;font-size:12px}
+.profile-picker select:focus{border-color:#47a77a;box-shadow:0 0 0 3px #19875412}
+.profile-empty{padding:28px 18px;border:1px dashed #dbe3ee;border-radius:10px;background:#fbfcfe;color:#7c8799;font-size:12.5px;text-align:center;line-height:1.55}
+@media(max-width:900px){
+  .profile-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:720px){
+  .profile-hero{padding:16px;gap:13px}
+  .profile-avatar{width:54px;height:54px;font-size:19px}
+  .profile-identity h2{font-size:18px}
+  .profile-grid{grid-template-columns:1fr}
+  .profile-picker{grid-template-columns:1fr}
+  .profile-picker select{font-size:16px}
+}

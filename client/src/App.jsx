@@ -27,10 +27,12 @@ import Employees from './pages/admin/Employees';
 import Attendance from './pages/admin/Attendance';
 import LeaveManagement from './pages/admin/LeaveManagement';
 import Reports from './pages/admin/Reports';
+import AdminProfile from './pages/admin/Profile';
 import MarkAttendance from './pages/employee/MarkAttendance';
 import ApplyLeave from './pages/employee/ApplyLeave';
 import ApplyPermission from './pages/employee/ApplyPermission';
 import EmployeeDashboard from './pages/employee/Dashboard';
+import EmployeeProfile from './pages/employee/Profile';
 
 const DEFAULT_PAGE = { admin: 'dashboard', employee: 'dashboard' };
 const HOME_FOR_ROLE = { admin: '/admin', employee: '/employee' };
@@ -40,15 +42,32 @@ function clearClientCaches() {
   clearEmployeeCache();
 }
 
-function AdminWorkspace({ user, activePage, setActivePage }) {
-  if (activePage === 'employees') return <Employees />;
+function AdminWorkspace({
+  user,
+  activePage,
+  setActivePage,
+  profileEmployeeId,
+  onOpenProfile,
+  onUserUpdate,
+}) {
+  if (activePage === 'profile')
+    return (
+      <AdminProfile
+        user={user}
+        selectedEmployeeId={profileEmployeeId}
+        onUserUpdate={onUserUpdate}
+      />
+    );
+  if (activePage === 'employees') return <Employees onOpenProfile={onOpenProfile} />;
   if (activePage === 'attendance') return <Attendance />;
   if (activePage === 'leaves') return <LeaveManagement />;
   if (activePage === 'reports') return <Reports />;
   return <Dashboard user={user} onNavigate={setActivePage} />;
 }
 
-function EmployeeWorkspace({ user, activePage, setActivePage }) {
+function EmployeeWorkspace({ user, activePage, setActivePage, onUserUpdate }) {
+  if (activePage === 'profile')
+    return <EmployeeProfile user={user} onUserUpdate={onUserUpdate} />;
   if (activePage === 'mark') return <MarkAttendance user={user} />;
   if (activePage === 'leave') return <ApplyLeave />;
   if (activePage === 'permission') return <ApplyPermission />;
@@ -63,6 +82,7 @@ function App() {
   const [activePage, setActivePage] = useState(
     () => DEFAULT_PAGE[initial?.user?.role] || 'dashboard'
   );
+  const [profileEmployeeId, setProfileEmployeeId] = useState('');
   const authRef = useRef(auth);
   const navigate = useNavigate();
 
@@ -118,6 +138,7 @@ function App() {
       clearClientCaches();
       setAuth(null);
       setActivePage('dashboard');
+      setProfileEmployeeId('');
       navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
     };
     window.addEventListener('attendance:auth-expired', onExpired);
@@ -137,6 +158,7 @@ function App() {
       clearClientCaches();
       setAuth(next?.user || null);
       setActivePage(DEFAULT_PAGE[next?.user?.role] || 'dashboard');
+      setProfileEmployeeId('');
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -149,7 +171,28 @@ function App() {
     clearClientCaches();
     setAuth(null);
     setActivePage('dashboard');
+    setProfileEmployeeId('');
     navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
+  };
+
+  // Keep the sidebar and stored session in sync after a Profile page refreshes
+  // from /auth/me (an admin may have edited these details meanwhile).
+  const updateUser = (nextUser) => {
+    if (!nextUser) return;
+    updateAuthUser(nextUser);
+    setAuth(nextUser);
+  };
+
+  // Opening Profile from the sidebar shows the signed-in user's own profile;
+  // only the employee-row action preselects someone else.
+  const selectPage = (key) => {
+    if (key === 'profile') setProfileEmployeeId('');
+    setActivePage(key);
+  };
+
+  const openEmployeeProfile = (employeeId) => {
+    setProfileEmployeeId(employeeId || '');
+    setActivePage('profile');
   };
 
   const onAuth = (data, remember = true) => {
@@ -157,6 +200,7 @@ function App() {
     clearClientCaches();
     setAuth(data.user);
     setActivePage(DEFAULT_PAGE[data.user.role] || 'dashboard');
+    setProfileEmployeeId('');
     navigate(HOME_FOR_ROLE[data.user.role] || '/login', { replace: true });
   };
 
@@ -251,9 +295,16 @@ function App() {
                 user={auth}
                 signOut={signOut}
                 activePage={activePage}
-                setActivePage={setActivePage}
+                setActivePage={selectPage}
               >
-                <AdminWorkspace user={auth} activePage={activePage} setActivePage={setActivePage} />
+                <AdminWorkspace
+                  user={auth}
+                  activePage={activePage}
+                  setActivePage={selectPage}
+                  profileEmployeeId={profileEmployeeId}
+                  onOpenProfile={openEmployeeProfile}
+                  onUserUpdate={updateUser}
+                />
               </Shell>
             </RequireAuth>
           }
@@ -266,9 +317,14 @@ function App() {
                 user={auth}
                 signOut={signOut}
                 activePage={activePage}
-                setActivePage={setActivePage}
+                setActivePage={selectPage}
               >
-                <EmployeeWorkspace user={auth} activePage={activePage} setActivePage={setActivePage} />
+                <EmployeeWorkspace
+                  user={auth}
+                  activePage={activePage}
+                  setActivePage={selectPage}
+                  onUserUpdate={updateUser}
+                />
               </Shell>
             </RequireAuth>
           }

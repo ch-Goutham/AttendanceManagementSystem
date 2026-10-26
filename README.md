@@ -6,7 +6,7 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 
 ### Admin console (5 sections)
 - **Dashboard** — total employees, present today, permission today, on leave today and late arrivals, plus today's per-employee check-in/check-out activity with exact timestamps.
-- **Employees** — create employee logins, edit employee details, reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office, Work from home or College).
+- **Employees** — create employee logins, edit employee details (including department and position), reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office, Work from home or College).
 - **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row with exact timestamps and a per-day check-in/check-out count, ordered by employee name.
 - **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request. The admin dashboard also lists every pending permission request for quick approval.
 - **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, check-ins, check-outs, open sessions, early logouts and leave days; the individual table lists exact session times. Excel (`.xlsx`) and PDF downloads carry the same columns.
@@ -16,6 +16,11 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 - **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history, approved permission days for the month and a monthly attendance percentage (half days count as 0.5, leave excluded).
 - **Permission** form with reason, start time, end time and auto-calculated total duration, plus request status.
 - **Apply Leave** form with reason, start date, end date, total leave days and approval status.
+
+### Profile
+- Open Profile by clicking the account block (avatar, name and role) directly above **Sign out** in the sidebar. There is no separate Profile nav item.
+- Admin Profile shows the admin's own account details plus a searchable employee profile viewer. Every detail entered for an employee (name, email, phone, employee ID, department, position, working location, account status and joined date) is shown read-only; the Employees table also has a Profile action for each row.
+- Employee Profile shows every detail the admin entered for that account, with a refresh action so admin edits appear without signing out.
 
 ### Access rules
 - Admins can view and manage all employees' attendance and leave.
@@ -150,13 +155,13 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 - `POST /api/auth/login` — admin or employee login; include `portal: "admin"` or `portal: "employee"` and credentials from the matching portal
 - `POST /api/auth/google/login` — sign in an existing account with a Google ID token; also requires the matching `portal`
 - `POST /api/auth/google/register-admin` — create an admin from a Google ID token (Terms required)
-- `GET /api/auth/me` — current user
+- `GET /api/auth/me` — current user, including phone, employee code, department, position, default location, account status and joined date
 - `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` — password reset flow
 
 ### Employees (admin only)
-- `POST /api/employees` — create an employee account and login credentials (`location` defaults to `Office`)
+- `POST /api/employees` — create an employee account and login credentials (`position` defaults to empty, `location` defaults to `Office`)
 - `GET /api/employees` — list employee accounts
-- `PATCH /api/employees/:id` — edit profile details: name, email, phone, employee code, department and location
+- `PATCH /api/employees/:id` — edit profile details: name, email, phone, employee code, department, position and location
 - `PATCH /api/employees/:id/location` — set the default location (`Office`, `Work from home` or `College`)
 - `PATCH /api/employees/:id/status` — activate/deactivate
 - `PATCH /api/employees/:id/password` — reset a password (8–72 chars with uppercase, lowercase, number and special character)

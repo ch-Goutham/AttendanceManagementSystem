@@ -20,8 +20,10 @@ const shape = (u) => ({
   role: u.role,
   employeeCode: u.employeeCode,
   department: u.department,
+  position: u.position || '',
   location: u.location || 'Office',
-  isActive: u.isActive
+  isActive: u.isActive,
+  createdAt: u.createdAt
 });
 
 function requestedLocation(value, fallback = 'Office') {
@@ -42,6 +44,7 @@ router.post('/', async (req, res, next) => {
       phone = '',
       employeeCode = '',
       department = '',
+      position = '',
       location = 'Office'
     } = req.body;
     if (!name?.trim() || !email?.trim() || !password)
@@ -62,6 +65,7 @@ router.post('/', async (req, res, next) => {
       role: 'employee',
       employeeCode,
       department,
+      position,
       location: resolvedLocation
     });
     res.status(201).json({ employee: shape(user) });
@@ -74,7 +78,7 @@ router.post('/', async (req, res, next) => {
 router.get('/', async (_req, res, next) => {
   try {
     const employees = await User.find({ role: 'employee' })
-      .select('name email phone role employeeCode department location isActive')
+      .select('name email phone role employeeCode department position location isActive createdAt')
       .sort({ name: 1 })
       .lean();
     res.json({ employees: employees.map(shape) });
@@ -139,6 +143,8 @@ router.patch('/:id', async (req, res, next) => {
       user.employeeCode = String(req.body.employeeCode || '').trim();
     if (req.body.department !== undefined)
       user.department = String(req.body.department || '').trim();
+    if (req.body.position !== undefined)
+      user.position = String(req.body.position || '').trim();
     user.location = location;
     await user.save();
 

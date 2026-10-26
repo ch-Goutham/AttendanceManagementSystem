@@ -8,6 +8,7 @@ import {
   Trash2,
   Search,
   Pencil,
+  IdCard,
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
@@ -28,6 +29,7 @@ const EMPTY_FORM = {
   password: '',
   employeeCode: '',
   department: '',
+  position: '',
   location: 'Office',
 };
 const LOCATIONS = ['Office', 'Work from home', 'College'];
@@ -37,9 +39,10 @@ const EDIT_FIELDS = [
   ['phone', 'Phone number', 'tel'],
   ['employeeCode', 'Employee ID', 'text'],
   ['department', 'Department', 'text'],
+  ['position', 'Position', 'text'],
 ];
 
-export default function Employees() {
+export default function Employees({ onOpenProfile }) {
   const notify = useToast();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +150,7 @@ export default function Employees() {
       phone: employee.phone || '',
       employeeCode: employee.employeeCode || '',
       department: employee.department || '',
+      position: employee.position || '',
       location: employee.location || 'Office',
     });
   }
@@ -225,6 +229,7 @@ export default function Employees() {
         employee.phone,
         employee.employeeCode,
         employee.department,
+        employee.position,
         employee.location,
       ]
         .filter(Boolean)
@@ -313,6 +318,7 @@ export default function Employees() {
               ['password', 'Temporary password'],
               ['employeeCode', 'Employee ID'],
               ['department', 'Department'],
+              ['position', 'Position'],
             ].map(([key, label]) => (
               <label key={key}>
                 {label}
@@ -398,8 +404,10 @@ export default function Employees() {
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Department</th>
+                  <th>Position</th>
                   <th>Location</th>
                   <th>Account</th>
+                  <th className="col-action">Profile</th>
                   <th className="col-action">Edit</th>
                   <th className="col-action">Reset</th>
                   <th className="col-action">Access</th>
@@ -422,6 +430,7 @@ export default function Employees() {
                     <td>{employee.email}</td>
                     <td>{employee.phone || '—'}</td>
                     <td>{employee.department || '—'}</td>
+                    <td>{employee.position || '—'}</td>
                     <td>
                       <select
                         className="inline-select"
@@ -438,6 +447,15 @@ export default function Employees() {
                     </td>
                     <td>
                       <Status status={employee.isActive === false ? 'Inactive' : 'Active'} />
+                    </td>
+                    <td className="col-action">
+                      <button
+                        className="link-btn"
+                        title="View full employee profile"
+                        onClick={() => onOpenProfile?.(employee.id)}
+                      >
+                        <IdCard size={14} /> Profile
+                      </button>
                     </td>
                     <td className="col-action">
                       <button
@@ -510,7 +528,7 @@ export default function Employees() {
                 ))}
                 {!visible.length && (
                   <tr>
-                    <td colSpan="11" className="empty">
+                    <td colSpan="13" className="empty">
                       {employees.length
                         ? 'No employees match your search.'
                         : 'No employees yet. Add your first employee.'}
