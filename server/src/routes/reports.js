@@ -474,12 +474,13 @@ function pdfColumns(report) {
 
 function drawPdfTable(doc, columns, rows, startY, totalRow) {
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
-  const headerFill = '#eaf7ef';
-  const line = '#e8edf4';
+  // PDFKit does not parse rgba() strings, so navy tints are produced with opacity.
+  const headerFill = '#00072D';
+  const line = '#00072D';
 
   const drawHeader = () => {
     doc.rect(PDF_MARGIN, startY, tableWidth, PDF_ROW).fill(headerFill);
-    doc.fillColor('#177b48').font('Helvetica-Bold').fontSize(8);
+    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(8);
     let x = PDF_MARGIN;
     columns.forEach((column) => {
       doc.text(column.label, x + 4, startY + 5, {
@@ -502,7 +503,7 @@ function drawPdfTable(doc, columns, rows, startY, totalRow) {
       startY = 30;
       y = drawHeader();
     }
-    doc.fillColor('#334155').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
+    doc.fillColor('#00072D').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8);
     let x = PDF_MARGIN;
     columns.forEach((column) => {
       const raw = column.value(row);
@@ -515,7 +516,7 @@ function drawPdfTable(doc, columns, rows, startY, totalRow) {
       x += column.width;
     });
     doc.moveTo(PDF_MARGIN, y + PDF_ROW).lineTo(PDF_MARGIN + tableWidth, y + PDF_ROW)
-      .strokeColor(line).lineWidth(0.5).stroke();
+      .strokeColor(line).lineWidth(0.5).strokeOpacity(0.12).stroke().strokeOpacity(1);
     y += PDF_ROW;
   };
 
@@ -527,7 +528,7 @@ function drawPdfTable(doc, columns, rows, startY, totalRow) {
 
 function renderPdf(doc, report) {
   const individual = report.meta.scope === 'individual';
-  doc.fillColor('#1c2638').font('Helvetica-Bold').fontSize(18);
+  doc.fillColor('#00072D').font('Helvetica-Bold').fontSize(18);
   doc.text(
     individual
       ? `Attendance report — ${report.meta.employee.name}`
@@ -536,7 +537,7 @@ function renderPdf(doc, report) {
     26
   );
 
-  doc.fillColor('#7c8799').font('Helvetica').fontSize(9);
+  doc.fillColor('#00072D').fillOpacity(0.60).font('Helvetica').fontSize(9);
   doc.text(
     `Working days: ${report.meta.workingDays}   ·   Shift: ${report.meta.config.shiftStart}–${report.meta.config.shiftEnd}` +
       `   ·   Grace: ${report.meta.config.graceMinutes} min   ·   Generated: ${new Date(
@@ -545,6 +546,7 @@ function renderPdf(doc, report) {
     PDF_MARGIN,
     50
   );
+  doc.fillOpacity(1);
 
   const columns = pdfColumns(report);
   const rows = individual ? report.days : report.rows;
@@ -578,13 +580,14 @@ function renderPdf(doc, report) {
 
   const endY = drawPdfTable(doc, columns, rows, 72, totalRow);
 
-  doc.fillColor('#98a2b2').font('Helvetica').fontSize(8);
+  doc.fillColor('#00072D').fillOpacity(0.55).font('Helvetica').fontSize(8);
   doc.text(
     'Permission counts approved requests in the month. Check-ins, check-outs and open sessions include every session in the month. Early logout means the final check-out was before shift end.',
     PDF_MARGIN,
     Math.min(endY + 14, doc.page.height - 30),
     { width: columns.reduce((sum, column) => sum + column.width, 0) }
   );
+  doc.fillOpacity(1);
 }
 
 /* --------------------------------- Routes -------------------------------- */

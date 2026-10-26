@@ -34,6 +34,9 @@ export default function LeaveManagement() {
   }));
   const [loading, setLoading] = useState(() => !readPageCache(LEAVE_CACHE_KEY));
   const [statusTab, setStatusTab] = useState('');
+  // The view switcher and status filters are separate controls, but only one
+  // box is visually selected (blue) at a time.
+  const [activeFilter, setActiveFilter] = useState({ kind: 'status', key: 'all' });
   const [employeeId, setEmployeeId] = useState('');
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -139,6 +142,12 @@ export default function LeaveManagement() {
   function changeView(next) {
     setView(next);
     setStatusTab('');
+    setActiveFilter({ kind: 'view', key: next });
+  }
+
+  function changeStatus(next) {
+    setStatusTab(next);
+    setActiveFilter({ kind: 'status', key: next || 'all' });
   }
 
   return (
@@ -154,10 +163,11 @@ export default function LeaveManagement() {
         </div>
       </div>
 
-      <div className="tabs">
+      <div className="tabs view-tabs">
         <button
           type="button"
-          className={`tab ${isLeaves ? 'active' : ''}`}
+          className={`tab ${activeFilter.kind === 'view' && activeFilter.key === 'leaves' ? 'view-active' : ''}`}
+          aria-pressed={activeFilter.kind === 'view' && activeFilter.key === 'leaves'}
           onClick={() => changeView('leaves')}
         >
           Leave requests
@@ -167,7 +177,8 @@ export default function LeaveManagement() {
         </button>
         <button
           type="button"
-          className={`tab ${!isLeaves ? 'active' : ''}`}
+          className={`tab ${activeFilter.kind === 'view' && activeFilter.key === 'permissions' ? 'view-active' : ''}`}
+          aria-pressed={activeFilter.kind === 'view' && activeFilter.key === 'permissions'}
           onClick={() => changeView('permissions')}
         >
           Permission requests
@@ -177,13 +188,14 @@ export default function LeaveManagement() {
         </button>
       </div>
 
-      <div className="tabs">
+      <div className="tabs filter-tabs">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.key || 'all'}
             type="button"
-            className={`tab ${statusTab === tab.key ? 'active' : ''}`}
-            onClick={() => setStatusTab(tab.key)}
+            className={`tab ${activeFilter.kind === 'status' && activeFilter.key === (tab.key || 'all') ? 'active' : ''}`}
+            aria-pressed={activeFilter.kind === 'status' && activeFilter.key === (tab.key || 'all')}
+            onClick={() => changeStatus(tab.key)}
           >
             {tab.label}
             <span className={`tab-count ${tab.key === 'Pending' && counts.Pending ? 'badge-warn' : ''}`}>

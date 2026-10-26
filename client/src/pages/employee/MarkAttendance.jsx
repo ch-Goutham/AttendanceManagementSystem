@@ -546,7 +546,10 @@ export default function MarkAttendance({ user }) {
                           missingCheckIn={record.missingCheckIn}
                         />
                         {record.late && record.lateReason && (
-                          <small className="cell-note" title={record.lateReason}>
+                          <small
+                            className="cell-note late-reason-note"
+                            title={record.lateReason}
+                          >
                             Reason: {record.lateReason}
                           </small>
                         )}
