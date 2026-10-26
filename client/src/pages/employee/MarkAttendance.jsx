@@ -26,7 +26,7 @@ import {
 import { errMsg } from '../../lib/format';
 import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
 
-const WORK_LOCATIONS = ['Office', 'Work from home'];
+const WORK_LOCATIONS = ['Office', 'Work from home', 'College'];
 const todayCacheKey = () => `me:today:${todayKey()}`;
 const recordsCacheKey = (month) => `me:attendance:${month}`;
 

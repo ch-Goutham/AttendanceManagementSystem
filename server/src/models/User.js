@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
   // when checking in (Attendance.location).
   location: {
     type: String,
-    enum: ['Office', 'Work from home'],
+    enum: ['Office', 'Work from home', 'College'],
     default: 'Office'
   },
   isActive: { type: Boolean, default: true }

@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import Leave from '../models/Leave.js';
 import Permission from '../models/Permission.js';
 import { protect, adminOnly } from '../middleware/auth.js';
-import { getAttendanceConfig } from '../config/attendance.js';
+import { getAttendanceConfig, getCompanyTimeZone } from '../config/attendance.js';
 import { serializeAttendance, todayKey } from '../utils/attendanceRules.js';
 import { inclusiveDays, leaveShape, permissionShape } from '../utils/requestShapes.js';
 
@@ -23,7 +23,9 @@ router.get('/', adminOnly, async (_req, res, next) => {
     // second database round trip.
     const [activeEmployees, allRecords, approvedPermissions, pendingPermissions, pendingLeaves] =
       await Promise.all([
-        User.find({ role: 'employee', isActive: { $ne: false } }).select('_id').lean(),
+        User.find({ role: 'employee', isActive: { $ne: false } })
+          .select('name email department')
+          .lean(),
         Attendance.find({ date }).lean(),
         Permission.find({ date, status: 'Approved' }).select('employee').lean(),
         Permission.find({ status: 'Pending' })
@@ -36,7 +38,10 @@ router.get('/', adminOnly, async (_req, res, next) => {
           .lean()
       ]);
 
-    const activeIds = new Set(activeEmployees.map((employee) => String(employee._id)));
+    const activeById = new Map(
+      activeEmployees.map((employee) => [String(employee._id), employee])
+    );
+    const activeIds = new Set(activeById.keys());
     const records = allRecords.filter((record) => activeIds.has(String(record.employee)));
 
     const config = getAttendanceConfig();
@@ -44,6 +49,34 @@ router.get('/', adminOnly, async (_req, res, next) => {
     const present = shaped.filter((record) => record.status === 'Present');
     const onLeave = shaped.filter((record) => record.status === 'Leave').length;
     const lateArrivals = present.filter((record) => record.late).length;
+
+    // Per-employee check-in/out detail for today, used by the dashboard panel.
+    const todayActivity = present
+      .map((record) => {
+        const employee = activeById.get(String(record.employee));
+        if (!employee) return null;
+        return {
+          employee: {
+            id: String(employee._id),
+            name: employee.name,
+            email: employee.email,
+            department: employee.department || ''
+          },
+          location: record.location,
+          hoursLabel: record.hoursLabel,
+          sessionCount: record.sessionCount,
+          checkOutCount: record.checkOutCount,
+          openSessionCount: record.openSessionCount,
+          checkIn: record.checkIn,
+          checkInAt: record.checkInAt,
+          checkOut: record.checkOut,
+          checkOutAt: record.checkOutAt,
+          sessions: record.sessions,
+          late: record.late
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
 
     // One employee counts once even when they have several approved permission
     // windows today.
@@ -59,6 +92,8 @@ router.get('/', adminOnly, async (_req, res, next) => {
       permissionToday,
       onLeaveToday: onLeave,
       lateArrivals,
+      timeZone: getCompanyTimeZone(),
+      todayActivity,
       pendingPermissionCount: pendingPermissions.length,
       pendingPermissions: pendingPermissions.map(permissionShape),
       pendingLeaveCount: pendingLeaves.length,

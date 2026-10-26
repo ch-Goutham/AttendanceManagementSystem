@@ -6,7 +6,7 @@ dotenv.config();
 
 export const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-export const WORK_LOCATIONS = ['Office', 'Work from home'];
+export const WORK_LOCATIONS = ['Office', 'Work from home', 'College'];
 const FALLBACK_WORKING_DAYS = [1, 2, 3, 4, 5, 6];
 
 export const isValidTime = (value) => typeof value === 'string' && TIME_PATTERN.test(value);

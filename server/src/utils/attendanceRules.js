@@ -164,6 +164,10 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
   // employee closes it. Completed sessions are summed.
   const workedSpans = sessions.map(sessionMinutes).filter((value) => value != null);
   const workedMinutes = workedSpans.length ? workedSpans.reduce((sum, value) => sum + value, 0) : null;
+  const sessionCount = sessions.length;
+  const checkOutCount = sessions.filter(
+    (session) => session.checkOut || session.checkOutAt
+  ).length;
 
   const firstInInstant = first?.checkInAt ? new Date(first.checkInAt) : null;
   const lastOutInstant = lastCompleted?.checkOutAt ? new Date(lastCompleted.checkOutAt) : null;
@@ -214,7 +218,9 @@ export function computeAttendanceMetrics(record, config = getAttendanceConfig())
         hoursLabel: hoursLabel(minutes)
       };
     }),
-    sessionCount: sessions.length,
+    sessionCount,
+    checkOutCount,
+    openSessionCount: sessionCount - checkOutCount,
     isCheckedIn: openSession
   };
 }

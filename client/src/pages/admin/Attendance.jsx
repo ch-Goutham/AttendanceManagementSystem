@@ -4,11 +4,13 @@ import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
 import { Status, DayFlag } from '../../components/Ui';
-import { currentMonth, formatDate, formatTime } from '../../lib/dates';
+import { currentMonth, formatDate, formatExactTime, formatTime } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
 import { getEmployees } from '../../lib/employeeDirectory';
 import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
 
+const LOCATIONS = ['Office', 'Work from home', 'College'];
+const LOCATION_BADGES = { Office: 'office', 'Work from home': 'wfh', College: 'college' };
 const INITIAL_FILTERS = { month: currentMonth(), date: '', employeeId: '' };
 const attendanceKey = (filters) =>
   `admin:attendance:${filters.month}|${filters.date || 'all'}|${filters.employeeId || 'all'}`;
@@ -25,9 +27,14 @@ const EDIT_EMPTY = {
 export default function Attendance() {
   const notify = useToast();
   const [employees, setEmployees] = useState([]);
-  const [records, setRecords] = useState(
-    () => readPageCache(attendanceKey(INITIAL_FILTERS)) || []
-  );
+  const [records, setRecords] = useState(() => {
+    const cached = readPageCache(attendanceKey(INITIAL_FILTERS));
+    return (Array.isArray(cached) ? cached : cached?.records) || [];
+  });
+  const [timeZone, setTimeZone] = useState(() => {
+    const cached = readPageCache(attendanceKey(INITIAL_FILTERS));
+    return Array.isArray(cached) ? '' : cached?.timeZone || '';
+  });
   const [loading, setLoading] = useState(
     () => !readPageCache(attendanceKey(INITIAL_FILTERS))
   );
@@ -43,8 +50,10 @@ export default function Attendance() {
   async function load({ silent = false } = {}) {
     const cacheKey = attendanceKey(filters);
     const cached = readPageCache(cacheKey);
-    if (cached) {
-      setRecords(cached);
+    const cachedRecords = Array.isArray(cached) ? cached : cached?.records;
+    if (cachedRecords) {
+      setRecords(cachedRecords);
+      if (!Array.isArray(cached)) setTimeZone(cached.timeZone || '');
       if (!silent) setLoading(false);
     } else if (!silent) {
       setRecords([]);
@@ -57,9 +66,10 @@ export default function Attendance() {
       if (filters.employeeId) params.employeeId = filters.employeeId;
 
       const { data } = await api.get('/attendance', { params });
-      const nextRecords = data.records || [];
-      setRecords(nextRecords);
-      writePageCache(cacheKey, nextRecords);
+      const payload = { records: data.records || [], timeZone: data.timeZone || '' };
+      setRecords(payload.records);
+      setTimeZone(payload.timeZone);
+      writePageCache(cacheKey, payload);
     } catch (error) {
       notify('error', errMsg(error));
     } finally {
@@ -151,8 +161,9 @@ export default function Attendance() {
           <p className="eyebrow">ADMIN CONSOLE</p>
           <h1>Attendance</h1>
           <p className="muted">
-            View every employee&apos;s check-in and check-out times, day type and late or early
-            flags. Each session is listed on its own row; correct a record when needed.
+            View every employee&apos;s daily check-in and check-out counts, exact session
+            timestamps, day type and late or early flags. Each session is listed on its own row;
+            correct a record when needed.
           </p>
         </div>
       </div>
@@ -231,6 +242,12 @@ export default function Attendance() {
                   // Day-level cells render once, on the first session row.
                   const isDayStart = sessionNumber <= 1;
                   const sessionCount = record.sessionCount ?? (record.sessions?.length || 0);
+                  const checkOutCount =
+                    record.checkOutCount ??
+                    (record.sessions || []).filter((item) => item.checkOut || item.checkOutAt)
+                      .length;
+                  const openCount =
+                    record.openSessionCount ?? Math.max(0, sessionCount - checkOutCount);
                   const multiSession = sessionCount > 1;
                   return (
                     <tr key={key}>
@@ -255,9 +272,38 @@ export default function Attendance() {
                         ) : (
                           '—'
                         )}
+                        {isDayStart && (
+                          <small className="cell-note">
+                            {sessionCount
+                              ? `${sessionCount} check-in${
+                                  sessionCount === 1 ? '' : 's'
+                                } · ${checkOutCount} check-out${
+                                  checkOutCount === 1 ? '' : 's'
+                                }${openCount ? ` · ${openCount} open` : ''}`
+                              : 'No sessions'}
+                          </small>
+                        )}
                       </td>
-                      <td>{formatTime(session?.checkIn)}</td>
-                      <td>{formatTime(session?.checkOut)}</td>
+                      <td>
+                        {formatTime(session?.checkIn)}
+                        {session?.checkInAt && (
+                          <small className="cell-note">
+                            exact {formatExactTime(session.checkInAt, timeZone)}
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        {session
+                          ? session.checkOut || session.checkOutAt
+                            ? formatTime(session.checkOut)
+                            : 'Still checked in'
+                          : '-'}
+                        {session?.checkOutAt && (
+                          <small className="cell-note">
+                            exact {formatExactTime(session.checkOutAt, timeZone)}
+                          </small>
+                        )}
+                      </td>
                       <td>
                         {session ? session.hoursLabel : '—'}
                         {isDayStart && multiSession && (
@@ -270,7 +316,7 @@ export default function Attendance() {
                         {isDayStart ? (
                           <span
                             className={`location-badge ${
-                              record.location === 'Work from home' ? 'wfh' : 'office'
+                              LOCATION_BADGES[record.location] || 'office'
                             }`}
                           >
                             {record.location || '—'}
@@ -330,10 +376,37 @@ export default function Attendance() {
             <p className="muted">
               {editing.employee?.name || 'Employee'} · {formatDate(editing.date)}
             </p>
-            {(editing.sessionCount || 0) > 1 && (
-              <p className="muted small-text">
-                This day has {editing.sessionCount} sessions. Changes here correct the whole day.
-              </p>
+            {Array.isArray(editing.sessions) && editing.sessions.length > 0 && (
+              <div className="modal-sessions">
+                <p className="late-reason-title">
+                  Sessions · {editing.sessionCount}
+                </p>
+                {editing.sessions.map((session, index) => (
+                  <div className="modal-session" key={session.id || index}>
+                    <span>Session {index + 1}</span>
+                    <b>
+                      {formatTime(session.checkIn)} →{' '}
+                      {session.checkOut ? formatTime(session.checkOut) : 'open'}
+                    </b>
+                    <small>
+                      {session.checkInAt
+                        ? `in ${formatExactTime(session.checkInAt, timeZone)}`
+                        : ''}
+                      {session.checkOutAt
+                        ? ` · out ${formatExactTime(session.checkOutAt, timeZone)}`
+                        : ''}
+                      {session.hoursLabel && session.hoursLabel !== '—'
+                        ? ` · ${session.hoursLabel}`
+                        : ''}
+                    </small>
+                  </div>
+                ))}
+                {(editing.sessionCount || 0) > 1 && (
+                  <p className="muted small-text">
+                    Changing the check-in or check-out fields below replaces the session history.
+                  </p>
+                )}
+              </div>
             )}
             <form className="edit-form" onSubmit={saveEdit}>
               <label>
@@ -393,8 +466,11 @@ export default function Attendance() {
                   onChange={(event) => setEditForm({ ...editForm, location: event.target.value })}
                 >
                   <option value="">Not set</option>
-                  <option value="Office">Office</option>
-                  <option value="Work from home">Work from home</option>
+                  {LOCATIONS.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="edit-note">

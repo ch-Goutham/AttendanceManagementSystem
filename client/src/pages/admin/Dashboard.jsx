@@ -3,9 +3,9 @@ import { Users, UserCheck, CalendarOff, Clock, Check, X, RefreshCw, ShieldCheck 
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { StatCard } from '../../components/Ui';
+import { StatCard, Status } from '../../components/Ui';
 import Spinner from '../../components/Spinner';
-import { formatDate, formatTime, todayKey } from '../../lib/dates';
+import { formatDate, formatExactTime, formatTime, todayKey } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
 import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
 
@@ -127,6 +127,102 @@ export default function Dashboard({ user, onNavigate }) {
               onClick: () => onNavigate('attendance'),
             })}
           </div>
+
+          <section className="panel">
+            <div className="panel-heading responsive-heading">
+              <div>
+                <h2>Today&apos;s check-in activity</h2>
+                <p className="muted small-text">
+                  Check-ins and check-outs per employee today, with exact server timestamps.
+                </p>
+              </div>
+              <div className="filters">
+                <span className="tab-count">
+                  {(data.todayActivity || []).length} present
+                </span>
+                <button className="icon-btn" onClick={() => load()} title="Refresh" type="button">
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Sessions</th>
+                    <th>Check-ins</th>
+                    <th>Check-outs</th>
+                    <th>First check-in</th>
+                    <th>Last check-out</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.todayActivity || []).map((activity) => (
+                    <tr key={activity.employee.id}>
+                      <td>
+                        <div className="employee-cell">
+                          <div className="avatar tiny">{initials(activity.employee.name)}</div>
+                          <div>
+                            <b>{activity.employee.name}</b>
+                            <small>
+                              {activity.employee.department || activity.employee.email}
+                            </small>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        {activity.sessionCount}
+                        {activity.openSessionCount > 0 && (
+                          <small className="cell-note">{activity.openSessionCount} open</small>
+                        )}
+                      </td>
+                      <td>{activity.sessionCount}</td>
+                      <td>{activity.checkOutCount}</td>
+                      <td>
+                        {formatTime(activity.checkIn)}
+                        {activity.checkInAt && (
+                          <small className="cell-note">
+                            exact {formatExactTime(activity.checkInAt, data.timeZone)}
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        {activity.checkOut || activity.checkOutAt
+                          ? formatTime(activity.checkOut)
+                          : activity.openSessionCount
+                            ? 'Still checked in'
+                            : '-'}
+                        {activity.checkOutAt && (
+                          <small className="cell-note">
+                            exact {formatExactTime(activity.checkOutAt, data.timeZone)}
+                          </small>
+                        )}
+                        {activity.openSessionCount > 0 && (
+                          <small className="cell-note">{activity.openSessionCount} open</small>
+                        )}
+                      </td>
+                      <td>
+                        <Status
+                          status={
+                            activity.openSessionCount > 0 ? 'Checked in' : 'Checked out'
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                  {!(data.todayActivity || []).length && (
+                    <tr>
+                      <td colSpan="7" className="empty">
+                        No check-ins recorded today.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           <section className="panel">
             <div className="panel-heading responsive-heading">

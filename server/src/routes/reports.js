@@ -9,6 +9,7 @@ import { protect, adminOnly } from '../middleware/auth.js';
 import { getAttendanceConfig, publicAttendanceConfig } from '../config/attendance.js';
 import {
   attendancePercentage,
+  companyParts,
   monthKey,
   serializeAttendance,
   workingDaysInMonth,
@@ -18,6 +19,29 @@ const router = Router();
 router.use(protect, adminOnly);
 
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+const pad2 = (value) => String(value).padStart(2, '0');
+
+/** HH:mm:ss on the office clock, for exact server-captured timestamps. */
+function exactTimeLabel(value, timeZone) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const { hour, minute, second } = companyParts(date, timeZone);
+  return `${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+}
+
+/** Compact "1) 09:32:14–12:45:03; 2) 13:20:44–open" list for exports. */
+function sessionBreakdown(day, timeZone) {
+  const sessions = Array.isArray(day?.sessions) ? day.sessions : [];
+  return sessions
+    .map((session, index) => {
+      const checkIn = exactTimeLabel(session.checkInAt, timeZone) || session.checkIn || '—';
+      const checkOut =
+        exactTimeLabel(session.checkOutAt, timeZone) || session.checkOut || 'open';
+      return `${index + 1}) ${checkIn}–${checkOut}`;
+    })
+    .join('; ');
+}
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -60,6 +84,9 @@ function summarize(employee, records, permissionCount = 0) {
     permission: permissionCount,
     late: presentRecords.filter((record) => record.late).length,
     earlyCheckout: presentRecords.filter((record) => record.earlyCheckout).length,
+    checkIns: records.reduce((sum, record) => sum + (record.sessionCount || 0), 0),
+    checkOuts: records.reduce((sum, record) => sum + (record.checkOutCount || 0), 0),
+    openSessions: records.reduce((sum, record) => sum + (record.openSessionCount || 0), 0),
     attendancePercentage: attendancePercentage(weightedPresent, absent)
   };
 }
@@ -76,7 +103,10 @@ function addTotals(rows) {
       leave: acc.leave + row.leave,
       permission: acc.permission + row.permission,
       late: acc.late + row.late,
-      earlyCheckout: acc.earlyCheckout + row.earlyCheckout
+      earlyCheckout: acc.earlyCheckout + row.earlyCheckout,
+      checkIns: acc.checkIns + row.checkIns,
+      checkOuts: acc.checkOuts + row.checkOuts,
+      openSessions: acc.openSessions + row.openSessions
     }),
     {
       recordedDays: 0,
@@ -88,7 +118,10 @@ function addTotals(rows) {
       leave: 0,
       permission: 0,
       late: 0,
-      earlyCheckout: 0
+      earlyCheckout: 0,
+      checkIns: 0,
+      checkOuts: 0,
+      openSessions: 0
     }
   );
   totals.weightedPresent = Math.round(totals.weightedPresent * 100) / 100;
@@ -168,6 +201,12 @@ async function buildReport({ month: requestedMonth, employeeId }) {
         status: record.status,
         checkIn: record.checkIn,
         checkOut: record.checkOut,
+        checkInAt: record.checkInAt,
+        checkOutAt: record.checkOutAt,
+        sessions: record.sessions,
+        sessionCount: record.sessionCount,
+        checkOutCount: record.checkOutCount,
+        openSessionCount: record.openSessionCount,
         hours: record.hours,
         hoursLabel: record.hoursLabel,
         dayType: record.dayType,
@@ -233,7 +272,8 @@ async function buildExcel(report) {
 
   const individual = report.meta.scope === 'individual';
   const sheet = workbook.addWorksheet(individual ? 'Employee report' : `Attendance ${report.meta.month}`);
-  const lastColumn = individual ? 'I' : 'H';
+  const lastColumn = individual ? 'J' : 'K';
+  const timeZone = report.meta.config.timeZone;
 
   sheet.mergeCells(`A1:${lastColumn}1`);
   sheet.getCell('A1').value = individual
@@ -255,6 +295,7 @@ async function buildExcel(report) {
     const header = sheet.addRow([
       'Date',
       'Status',
+      'Sessions',
       'Check in',
       'Check out',
       'Hours',
@@ -266,11 +307,13 @@ async function buildExcel(report) {
     styleHeaderRow(header);
 
     report.days.forEach((day) => {
+      const breakdown = sessionBreakdown(day, timeZone);
       const row = sheet.addRow([
         day.date,
         day.status,
-        day.checkIn || '-',
-        day.checkOut || '-',
+        `${day.sessionCount || 0}${breakdown ? ` · ${breakdown}` : ''}`,
+        exactTimeLabel(day.checkInAt, timeZone) || day.checkIn || '-',
+        exactTimeLabel(day.checkOutAt, timeZone) || day.checkOut || '-',
         day.hoursLabel,
         day.status === 'Present' ? day.dayType : '—',
         day.late ? 'Yes' : 'No',
@@ -283,6 +326,9 @@ async function buildExcel(report) {
     const totalRow = sheet.addRow([
       'Total',
       `${report.totals.presentDays} present`,
+      `${report.totals.checkIns} in · ${report.totals.checkOuts} out${
+        report.totals.openSessions ? ` · ${report.totals.openSessions} open` : ''
+      }`,
       '',
       '',
       '',
@@ -297,8 +343,9 @@ async function buildExcel(report) {
     sheet.columns = [
       { width: 14 },
       { width: 13 },
-      { width: 11 },
-      { width: 11 },
+      { width: 54 },
+      { width: 13 },
+      { width: 13 },
       { width: 11 },
       { width: 17 },
       { width: 8 },
@@ -312,6 +359,9 @@ async function buildExcel(report) {
       'Full day',
       'Half day',
       'Permission',
+      'Check-ins',
+      'Check-outs',
+      'Open',
       'Early logout',
       'Leave',
       'Attendance %',
@@ -325,6 +375,9 @@ async function buildExcel(report) {
         row.fullDays,
         row.halfDays,
         row.permission,
+        row.checkIns,
+        row.checkOuts,
+        row.openSessions,
         row.earlyCheckout,
         row.leave,
         `${row.attendancePercentage}%`,
@@ -338,6 +391,9 @@ async function buildExcel(report) {
       report.totals.fullDays,
       report.totals.halfDays,
       report.totals.permission,
+      report.totals.checkIns,
+      report.totals.checkOuts,
+      report.totals.openSessions,
       report.totals.earlyCheckout,
       report.totals.leave,
       `${report.totals.attendancePercentage}%`,
@@ -351,6 +407,9 @@ async function buildExcel(report) {
       { width: 12 },
       { width: 12 },
       { width: 13 },
+      { width: 11 },
+      { width: 11 },
+      { width: 8 },
       { width: 14 },
       { width: 10 },
       { width: 14 },
@@ -367,30 +426,47 @@ const PDF_MARGIN = 30;
 const PDF_ROW = 19;
 
 function pdfColumns(report) {
+  const timeZone = report.meta.config.timeZone;
   if (report.meta.scope === 'individual') {
     return [
-      { label: 'Date', width: 68, value: (row) => row.date },
-      { label: 'Status', width: 64, value: (row) => row.status },
-      { label: 'In', width: 52, value: (row) => row.checkIn || '-' },
-      { label: 'Out', width: 52, value: (row) => row.checkOut || '-' },
-      { label: 'Hours', width: 56, value: (row) => row.hoursLabel },
-      { label: 'Day type', width: 64, value: (row) => (row.status === 'Present' ? row.dayType : '—') },
-      { label: 'Late', width: 42, value: (row) => (row.late ? 'Yes' : 'No') },
-      { label: 'Early', width: 44, value: (row) => (row.earlyCheckout ? 'Yes' : 'No') },
-      { label: 'Note', width: 304, value: (row) => row.note || '' },
+      { label: 'Date', width: 60, value: (row) => row.date },
+      { label: 'Status', width: 55, value: (row) => row.status },
+      {
+        label: 'Sessions',
+        width: 210,
+        value: (row) => row.sessionBreakdown || sessionBreakdown(row, timeZone) || '—',
+      },
+      {
+        label: 'In',
+        width: 55,
+        value: (row) => exactTimeLabel(row.checkInAt, timeZone) || row.checkIn || '-',
+      },
+      {
+        label: 'Out',
+        width: 55,
+        value: (row) => exactTimeLabel(row.checkOutAt, timeZone) || row.checkOut || '-',
+      },
+      { label: 'Hours', width: 50, value: (row) => row.hoursLabel },
+      { label: 'Day type', width: 52, value: (row) => (row.status === 'Present' ? row.dayType : '—') },
+      { label: 'Late', width: 34, value: (row) => (row.late ? 'Yes' : 'No') },
+      { label: 'Early', width: 38, value: (row) => (row.earlyCheckout ? 'Yes' : 'No') },
+      { label: 'Note', width: 150, value: (row) => row.note || '' },
     ];
   }
   return [
-    { label: 'Name', width: 165, value: (row) => row.employee.name },
-    { label: 'Department', width: 120, value: (row) => row.employee.department || '—' },
-    { label: 'Full day', width: 75, value: (row) => row.fullDays },
-    { label: 'Half day', width: 75, value: (row) => row.halfDays },
-    { label: 'Permission', width: 90, value: (row) => row.permission },
-    { label: 'Early logout', width: 90, value: (row) => row.earlyCheckout },
-    { label: 'Leave', width: 65, value: (row) => row.leave },
+    { label: 'Name', width: 130, value: (row) => row.employee.name },
+    { label: 'Department', width: 90, value: (row) => row.employee.department || '—' },
+    { label: 'Full day', width: 55, value: (row) => row.fullDays },
+    { label: 'Half day', width: 55, value: (row) => row.halfDays },
+    { label: 'Permission', width: 65, value: (row) => row.permission },
+    { label: 'Check-ins', width: 55, value: (row) => row.checkIns },
+    { label: 'Check-outs', width: 60, value: (row) => row.checkOuts },
+    { label: 'Open', width: 40, value: (row) => row.openSessions },
+    { label: 'Early logout', width: 65, value: (row) => row.earlyCheckout },
+    { label: 'Leave', width: 42, value: (row) => row.leave },
     {
       label: 'Attendance %',
-      width: 70,
+      width: 60,
       value: (row) => `${row.attendancePercentage}%`,
     },
   ];
@@ -476,6 +552,9 @@ function renderPdf(doc, report) {
     ? {
         date: 'Total',
         status: `${report.totals.presentDays} present`,
+        sessionBreakdown: `${report.totals.checkIns} in · ${report.totals.checkOuts} out${
+          report.totals.openSessions ? ` · ${report.totals.openSessions} open` : ''
+        }`,
         checkIn: '',
         checkOut: '',
         hoursLabel: '',
@@ -489,6 +568,9 @@ function renderPdf(doc, report) {
         fullDays: report.totals.fullDays,
         halfDays: report.totals.halfDays,
         permission: report.totals.permission,
+        checkIns: report.totals.checkIns,
+        checkOuts: report.totals.checkOuts,
+        openSessions: report.totals.openSessions,
         earlyCheckout: report.totals.earlyCheckout,
         leave: report.totals.leave,
         attendancePercentage: report.totals.attendancePercentage,
@@ -498,7 +580,7 @@ function renderPdf(doc, report) {
 
   doc.fillColor('#98a2b2').font('Helvetica').fontSize(8);
   doc.text(
-    'Permission counts approved requests in the month. Early logout means the final check-out was before shift end.',
+    'Permission counts approved requests in the month. Check-ins, check-outs and open sessions include every session in the month. Early logout means the final check-out was before shift end.',
     PDF_MARGIN,
     Math.min(endY + 14, doc.page.height - 30),
     { width: columns.reduce((sum, column) => sum + column.width, 0) }

@@ -3,6 +3,7 @@ import Attendance from '../models/Attendance.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 import {
   getAttendanceConfig,
+  getCompanyTimeZone,
   isValidDate,
   isValidLocation,
   publicAttendanceConfig
@@ -137,7 +138,10 @@ router.get('/', async (req, res, next) => {
       .lean();
 
     const config = getAttendanceConfig();
-    res.json({ records: records.map((record) => serializeAttendance(record, config)) });
+    res.json({
+      records: records.map((record) => serializeAttendance(record, config)),
+      timeZone: getCompanyTimeZone()
+    });
   } catch (e) {
     next(e);
   }
@@ -156,7 +160,7 @@ router.post('/check-in', async (req, res, next) => {
       String(requestedLocation).trim() &&
       !isValidLocation(requestedLocation)
     ) {
-      return res.status(400).json({ message: 'location must be Office or Work from home' });
+      return res.status(400).json({ message: 'location must be Office, Work from home or College' });
     }
     const location = resolveLocation(requestedLocation, req.user.location);
 
@@ -395,7 +399,7 @@ router.patch('/:id', adminOnly, async (req, res, next) => {
     if (req.body.location !== undefined) {
       const requested = String(req.body.location || '').trim();
       if (requested && !isValidLocation(requested))
-        return res.status(400).json({ message: 'location must be Office or Work from home' });
+        return res.status(400).json({ message: 'location must be Office, Work from home or College' });
       location = requested;
     }
 

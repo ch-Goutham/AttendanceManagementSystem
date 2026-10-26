@@ -36,7 +36,7 @@ const attendanceSchema = new mongoose.Schema({
   // Location for this day: falls back to the employee's profile default.
   location: {
     type: String,
-    enum: ['Office', 'Work from home', ''],
+    enum: ['Office', 'Work from home', 'College', ''],
     default: ''
   },
   // Optional explanation supplied by the employee when they arrive late.

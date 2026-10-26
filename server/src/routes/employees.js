@@ -50,7 +50,7 @@ router.post('/', async (req, res, next) => {
     if (passwordIssue) return res.status(400).json({ message: passwordIssue });
     const resolvedLocation = requestedLocation(location);
     if (!resolvedLocation)
-      return res.status(400).json({ message: 'location must be Office or Work from home' });
+      return res.status(400).json({ message: 'location must be Office, Work from home or College' });
     if (await User.exists({ email: email.toLowerCase().trim() }))
       return res.status(409).json({ message: 'Email already registered' });
 
@@ -90,7 +90,7 @@ router.patch('/:id/location', async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid employee id' });
     const location = requestedLocation(req.body.location, '');
     if (!location)
-      return res.status(400).json({ message: 'location must be Office or Work from home' });
+      return res.status(400).json({ message: 'location must be Office, Work from home or College' });
 
     const user = await User.findOneAndUpdate(
       { _id: req.params.id, role: 'employee' },
@@ -100,6 +100,51 @@ router.patch('/:id/location', async (req, res, next) => {
     if (!user) return res.status(404).json({ message: 'Employee account not found' });
     res.json({ employee: shape(user) });
   } catch (e) {
+    next(e);
+  }
+});
+
+// Admin edits an employee's profile details. Password and access status keep
+// their own dedicated routes below.
+router.patch('/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id))
+      return res.status(400).json({ message: 'Invalid employee id' });
+
+    const user = await User.findOne({ _id: req.params.id, role: 'employee' });
+    if (!user) return res.status(404).json({ message: 'Employee account not found' });
+
+    const name = req.body.name !== undefined ? String(req.body.name).trim() : user.name;
+    const email =
+      req.body.email !== undefined ? String(req.body.email).toLowerCase().trim() : user.email;
+    if (!name) return res.status(400).json({ message: 'Name is required' });
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    if (email !== user.email) {
+      const emailTaken = await User.exists({ email, _id: { $ne: user._id } });
+      if (emailTaken) return res.status(409).json({ message: 'Email already registered' });
+    }
+
+    const location =
+      req.body.location !== undefined
+        ? requestedLocation(req.body.location, '')
+        : user.location || 'Office';
+    if (!location)
+      return res.status(400).json({ message: 'location must be Office, Work from home or College' });
+
+    user.name = name;
+    user.email = email;
+    if (req.body.phone !== undefined) user.phone = String(req.body.phone || '').trim();
+    if (req.body.employeeCode !== undefined)
+      user.employeeCode = String(req.body.employeeCode || '').trim();
+    if (req.body.department !== undefined)
+      user.department = String(req.body.department || '').trim();
+    user.location = location;
+    await user.save();
+
+    res.json({ employee: shape(user) });
+  } catch (e) {
+    if (e?.code === 11000) return res.status(409).json({ message: 'Email already registered' });
     next(e);
   }
 });

@@ -5,11 +5,11 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 ## Features
 
 ### Admin console (5 sections)
-- **Dashboard** — total employees, present today, permission today, on leave today and late arrivals.
-- **Employees** — create employee logins, reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office or Work from home).
-- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row (with the day's total hours), ordered by employee name.
+- **Dashboard** — total employees, present today, permission today, on leave today and late arrivals, plus today's per-employee check-in/check-out activity with exact timestamps.
+- **Employees** — create employee logins, edit employee details, reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office, Work from home or College).
+- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row with exact timestamps and a per-day check-in/check-out count, ordered by employee name.
 - **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request. The admin dashboard also lists every pending permission request for quick approval.
-- **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, early logouts and leave days; Excel (`.xlsx`) and PDF downloads carry the same columns.
+- **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, check-ins, check-outs, open sessions, early logouts and leave days; the individual table lists exact session times. Excel (`.xlsx`) and PDF downloads carry the same columns.
 
 ### Employee workspace
 - Dashboard with the employee's total leave and permission requests plus approved/pending/rejected status.
@@ -39,7 +39,7 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 - A day can contain more than one check-in/check-out session. After checking out, the employee can check in again once the cooldown has passed; all check-in times are kept and the day's hours are the sum of the sessions.
 - A check-out that happens after midnight (or an earlier forgotten check-out) closes the open record from the previous day when it is at most 20 hours old.
 - Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
-- Each employee has a default working location (Office or Work from home). The employee can choose a different location for a session at check-in; the admin sees the recorded location in the Attendance table.
+- Each employee has a default working location (Office, Work from home or College). The employee can choose a different location for a session at check-in; the admin sees the recorded location in the Attendance table.
 - Times are stored as company-local `HH:mm` alongside the `YYYY-MM-DD` date, so there is no timezone date drift.
 - Check-in and check-out also store the exact server instant (`checkInAt`, `checkOutAt`) with seconds; the `HH:mm` values are the display/edit form.
 
@@ -156,15 +156,16 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 ### Employees (admin only)
 - `POST /api/employees` — create an employee account and login credentials (`location` defaults to `Office`)
 - `GET /api/employees` — list employee accounts
-- `PATCH /api/employees/:id/location` — set the default location (`Office` or `Work from home`)
+- `PATCH /api/employees/:id` — edit profile details: name, email, phone, employee code, department and location
+- `PATCH /api/employees/:id/location` — set the default location (`Office`, `Work from home` or `College`)
 - `PATCH /api/employees/:id/status` — activate/deactivate
 - `PATCH /api/employees/:id/password` — reset a password (8–72 chars with uppercase, lowercase, number and special character)
 - `DELETE /api/employees/:id` — permanently delete an employee and their records
 
 ### Attendance
-- `GET /api/attendance` — records; admin can filter by `employeeId`, `month` or `date`; employees are always scoped to their own records
+- `GET /api/attendance` — records plus the company `timeZone`; admin can filter by `employeeId`, `month` or `date`; employees are always scoped to their own records
 - `GET /api/attendance/today` — the signed-in employee's record for today
-- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason` and `location` (`Office` or `Work from home`). A new session is allowed after `RECHECKIN_COOLDOWN_MINUTES`; all sessions are returned in `sessions`.
+- `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason` and `location` (`Office`, `Work from home` or `College`). A new session is allowed after `RECHECKIN_COOLDOWN_MINUTES`; all sessions are returned in `sessions`.
 - `PATCH /api/attendance/today/late-reason` — employee adds/updates today's reason for a late check-in
 - `PATCH /api/attendance/:id` — **admin** corrects status, times, day type or note
 
@@ -179,9 +180,9 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 - `PATCH /api/permissions/:id/review` — admin approves/rejects
 
 ### Dashboard and reports
-- `GET /api/dashboard` — **admin** total employees, today's attendance headline numbers, and every pending permission and leave request
+- `GET /api/dashboard` — **admin** total employees, today's attendance headline numbers, per-employee `todayActivity` with session counts and exact timestamps, and every pending permission and leave request
 - `GET /api/dashboard/me` — **employee** leave/permission totals, approval statuses and newest requests
-- `GET /api/reports/attendance?month=YYYY-MM&employeeId=` — JSON report preview
+- `GET /api/reports/attendance?month=YYYY-MM&employeeId=` — JSON report preview with daily sessions and check-in/check-out totals
 - `GET /api/reports/attendance.xlsx?month=YYYY-MM&employeeId=` — Excel download
 - `GET /api/reports/attendance.pdf?month=YYYY-MM&employeeId=` — PDF download
 

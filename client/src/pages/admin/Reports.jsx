@@ -11,7 +11,7 @@ import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
 import { getEmployees } from '../../lib/employeeDirectory';
-import { currentMonth, formatDate, formatTime } from '../../lib/dates';
+import { currentMonth, formatDate, formatExactTime, formatTime } from '../../lib/dates';
 import { downloadBlob, errMsg, initials } from '../../lib/format';
 import { readPageCache, writePageCache } from '../../lib/pageCache';
 
@@ -215,8 +215,9 @@ export default function Reports() {
             <div>
               <h2>Daily attendance</h2>
               <p className="muted small-text">
-                Every recorded day for {report.meta.employee.name} in {month}. Half days count as
-                0.5; leave is excluded from the attendance percentage.
+                Every recorded day for {report.meta.employee.name} in {month}. Sessions show the
+                exact check-in and check-out timestamps. Half days count as 0.5; leave is excluded
+                from the attendance percentage.
               </p>
             </div>
             <span
@@ -234,6 +235,7 @@ export default function Reports() {
                 <tr>
                   <th>Date</th>
                   <th>Status</th>
+                  <th>Sessions</th>
                   <th>Check in</th>
                   <th>Check out</th>
                   <th>Hours</th>
@@ -248,8 +250,71 @@ export default function Reports() {
                   <tr key={day.date}>
                     <td>{formatDate(day.date)}</td>
                     <td>{day.status}</td>
-                    <td>{formatTime(day.checkIn)}</td>
-                    <td>{formatTime(day.checkOut)}</td>
+                    <td>
+                      {day.sessionCount ? (
+                        <details className="session-details">
+                          <summary>
+                            {day.sessionCount} session{day.sessionCount === 1 ? '' : 's'}
+                            {day.openSessionCount ? ` · ${day.openSessionCount} open` : ''}
+                          </summary>
+                          <div className="session-details-list">
+                            {(day.sessions || []).map((session, index) => (
+                              <div key={session.id || index} className="session-detail-row">
+                                <span>Session {index + 1}</span>
+                                <b>
+                                  {formatTime(session.checkIn)} –{' '}
+                                  {session.checkOut ? formatTime(session.checkOut) : 'open'}
+                                </b>
+                                <small>
+                                  {session.checkInAt
+                                    ? `in ${formatExactTime(
+                                        session.checkInAt,
+                                        report.meta.config.timeZone
+                                      )}`
+                                    : ''}
+                                  {session.checkOutAt
+                                    ? ` · out ${formatExactTime(
+                                        session.checkOutAt,
+                                        report.meta.config.timeZone
+                                      )}`
+                                    : ''}
+                                </small>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
+                      {formatTime(day.checkIn)}
+                      {day.checkInAt && (
+                        <small className="cell-note">
+                          exact{' '}
+                          {formatExactTime(day.checkInAt, report.meta.config.timeZone)}
+                        </small>
+                      )}
+                    </td>
+                    <td>
+                      {day.checkOut || day.checkOutAt
+                        ? formatTime(day.checkOut)
+                        : day.openSessionCount
+                          ? 'Still checked in'
+                          : '-'}
+                      {day.checkOutAt && (
+                        <small className="cell-note">
+                          exact{' '}
+                          {formatExactTime(day.checkOutAt, report.meta.config.timeZone)}
+                        </small>
+                      )}
+                      {day.openSessionCount > 0 && (
+                        <small className="cell-note">
+                          {day.openSessionCount} session
+                          {day.openSessionCount === 1 ? '' : 's'} still open
+                        </small>
+                      )}
+                    </td>
                     <td>{day.hoursLabel}</td>
                     <td>{day.status === 'Present' ? day.dayType : '—'}</td>
                     <td>{day.late ? 'Yes' : 'No'}</td>
@@ -259,7 +324,7 @@ export default function Reports() {
                 ))}
                 {!report.days.length && (
                   <tr>
-                    <td colSpan="9" className="empty">
+                    <td colSpan="10" className="empty">
                       No attendance recorded for this employee in {month}.
                     </td>
                   </tr>
@@ -275,7 +340,7 @@ export default function Reports() {
               <h2>Monthly attendance</h2>
               <p className="muted small-text">
                 Full and half days come from attendance. Permission counts approved requests in the
-                selected month.
+                selected month. Check-ins and check-outs count every session.
               </p>
             </div>
           </div>
@@ -288,6 +353,9 @@ export default function Reports() {
                   <th>Full day</th>
                   <th>Half day</th>
                   <th>Permission</th>
+                  <th>Check-ins</th>
+                  <th>Check-outs</th>
+                  <th>Open</th>
                   <th>Early logout</th>
                   <th>Leave</th>
                   <th>Attendance %</th>
@@ -309,6 +377,9 @@ export default function Reports() {
                     <td>{row.fullDays}</td>
                     <td>{row.halfDays}</td>
                     <td>{row.permission}</td>
+                    <td>{row.checkIns}</td>
+                    <td>{row.checkOuts}</td>
+                    <td>{row.openSessions}</td>
                     <td>{row.earlyCheckout}</td>
                     <td>{row.leave}</td>
                     <td>{row.attendancePercentage}%</td>
@@ -316,7 +387,7 @@ export default function Reports() {
                 ))}
                 {!report.rows.length && (
                   <tr>
-                    <td colSpan="8" className="empty">
+                    <td colSpan="11" className="empty">
                       No employees on record yet.
                     </td>
                   </tr>
@@ -337,6 +408,15 @@ export default function Reports() {
                     </td>
                     <td>
                       <b>{report.totals.permission}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.checkIns}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.checkOuts}</b>
+                    </td>
+                    <td>
+                      <b>{report.totals.openSessions}</b>
                     </td>
                     <td>
                       <b>{report.totals.earlyCheckout}</b>

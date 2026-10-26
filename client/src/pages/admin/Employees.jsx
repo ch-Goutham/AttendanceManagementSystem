@@ -7,6 +7,7 @@ import {
   UserX,
   Trash2,
   Search,
+  Pencil,
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
@@ -29,7 +30,14 @@ const EMPTY_FORM = {
   department: '',
   location: 'Office',
 };
-const LOCATIONS = ['Office', 'Work from home'];
+const LOCATIONS = ['Office', 'Work from home', 'College'];
+const EDIT_FIELDS = [
+  ['name', 'Full name', 'text'],
+  ['email', 'Email', 'email'],
+  ['phone', 'Phone number', 'tel'],
+  ['employeeCode', 'Employee ID', 'text'],
+  ['department', 'Department', 'text'],
+];
 
 export default function Employees() {
   const notify = useToast();
@@ -44,6 +52,9 @@ export default function Employees() {
   const [resetBusy, setResetBusy] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [editId, setEditId] = useState('');
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const askConfirm = (options) => setConfirm(options);
   async function runConfirm() {
@@ -125,6 +136,45 @@ export default function Employees() {
       setEmployees(previous);
       clearEmployeeCache();
       notify('error', errMsg(error));
+    }
+  }
+
+  function startEdit(employee) {
+    setEditId(employee.id);
+    setEditForm({
+      name: employee.name || '',
+      email: employee.email || '',
+      phone: employee.phone || '',
+      employeeCode: employee.employeeCode || '',
+      department: employee.department || '',
+      location: employee.location || 'Office',
+    });
+  }
+
+  function closeEdit() {
+    setEditId('');
+    setEditForm(null);
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    setEditSaving(true);
+    try {
+      const { data } = await api.patch(`/employees/${editId}`, editForm);
+      const updated = data.employee;
+      setEmployees((current) =>
+        current
+          .map((employee) => (employee.id === updated.id ? updated : employee))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+      );
+      patchCachedEmployee(updated);
+      clearPageCache();
+      notify('success', 'Employee details updated.');
+      closeEdit();
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -350,6 +400,7 @@ export default function Employees() {
                   <th>Department</th>
                   <th>Location</th>
                   <th>Account</th>
+                  <th className="col-action">Edit</th>
                   <th className="col-action">Reset</th>
                   <th className="col-action">Access</th>
                   <th className="col-action">Delete</th>
@@ -387,6 +438,16 @@ export default function Employees() {
                     </td>
                     <td>
                       <Status status={employee.isActive === false ? 'Inactive' : 'Active'} />
+                    </td>
+                    <td className="col-action">
+                      <button
+                        className="link-btn"
+                        title="Edit employee details"
+                        onClick={() => startEdit(employee)}
+                        disabled={editId === employee.id}
+                      >
+                        <Pencil size={14} /> Edit
+                      </button>
                     </td>
                     <td className="col-action">
                       <button
@@ -449,7 +510,7 @@ export default function Employees() {
                 ))}
                 {!visible.length && (
                   <tr>
-                    <td colSpan="10" className="empty">
+                    <td colSpan="11" className="empty">
                       {employees.length
                         ? 'No employees match your search.'
                         : 'No employees yet. Add your first employee.'}
@@ -461,6 +522,52 @@ export default function Employees() {
           )}
         </div>
       </section>
+
+      {editForm && (
+        <div className="modal-backdrop" onClick={closeEdit}>
+          <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <h3>Edit employee</h3>
+            <p className="muted">
+              Update the profile details for {editForm.name || 'this employee'}.
+            </p>
+            <form className="edit-form" onSubmit={saveEdit}>
+              {EDIT_FIELDS.map(([key, label, type]) => (
+                <label key={key}>
+                  {label}
+                  <input
+                    required={['name', 'email'].includes(key)}
+                    type={type}
+                    value={editForm[key]}
+                    onChange={(event) => setEditForm({ ...editForm, [key]: event.target.value })}
+                    placeholder={label}
+                  />
+                </label>
+              ))}
+              <label>
+                Location
+                <select
+                  value={editForm.location}
+                  onChange={(event) => setEditForm({ ...editForm, location: event.target.value })}
+                >
+                  {LOCATIONS.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={closeEdit}>
+                  Cancel
+                </button>
+                <button className="primary" disabled={editSaving}>
+                  {editSaving ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirm}
