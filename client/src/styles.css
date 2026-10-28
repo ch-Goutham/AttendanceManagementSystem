@@ -174,7 +174,8 @@
 .checkin-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .time-strip{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-top:20px;border-top:1px solid rgba(0,7,45,.12);padding-top:17px}
 .time-strip div{display:flex;flex-direction:column;gap:5px;min-width:0}
-.time-strip span{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:rgba(0,7,45,.55);font-weight:700}
+.time-strip span:not(.status){font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:rgba(0,7,45,.55);font-weight:700}
+.time-strip .status{align-self:flex-start}
 .time-strip b{font-size:13px;color:#00072D;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .checkin-foot{margin-top:13px}
 .selected-times{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;color:rgba(0,7,45,.66);font-size:11px}
