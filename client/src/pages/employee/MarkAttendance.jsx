@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   CalendarOff,
+  CalendarPlus,
   Clock,
   FileText,
   LogIn,
   LogOut,
   MapPin,
+  RefreshCw,
   ShieldCheck,
   UserCheck,
 } from 'lucide-react';
@@ -29,6 +31,15 @@ import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCac
 const WORK_LOCATIONS = ['Office', 'Work from home', 'College'];
 const todayCacheKey = () => `me:today:${todayKey()}`;
 const recordsCacheKey = (month) => `me:attendance:${month}`;
+const REPORTS_CACHE_KEY = 'me:missed-check-ins';
+
+const emptyReportForm = (user) => ({
+  date: todayKey(),
+  reason: '',
+  requestedCheckIn: '',
+  requestedCheckOut: '',
+  location: user?.location || 'Office',
+});
 
 export default function MarkAttendance({ user }) {
   const notify = useToast();
@@ -48,6 +59,12 @@ export default function MarkAttendance({ user }) {
   const [busy, setBusy] = useState(false);
   const [reasonBusy, setReasonBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [reportForm, setReportForm] = useState(() => emptyReportForm(user));
+  const [reports, setReports] = useState(() => readPageCache(REPORTS_CACHE_KEY) || []);
+  const [reportsLoading, setReportsLoading] = useState(
+    () => !readPageCache(REPORTS_CACHE_KEY)
+  );
+  const [reportBusy, setReportBusy] = useState(false);
 
   async function load({ silent = false } = {}) {
     const cacheKey = recordsCacheKey(month);
@@ -81,9 +98,35 @@ export default function MarkAttendance({ user }) {
     }
   }
 
+  async function loadReports({ silent = false } = {}) {
+    const cached = readPageCache(REPORTS_CACHE_KEY);
+    if (Array.isArray(cached)) {
+      setReports(cached);
+      if (!silent) setReportsLoading(false);
+    } else if (!silent) {
+      setReports([]);
+      setReportsLoading(true);
+    }
+
+    try {
+      const { data } = await api.get('/missed-check-ins');
+      const nextReports = data.reports || [];
+      setReports(nextReports);
+      writePageCache(REPORTS_CACHE_KEY, nextReports);
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      if (!silent) setReportsLoading(false);
+    }
+  }
+
   useEffect(() => {
     load();
   }, [month]);
+
+  useEffect(() => {
+    loadReports();
+  }, []);
 
   // Approved permission days for the selected month. Counting distinct dates
   // means two approved windows on one day still show as a single day.
@@ -201,6 +244,51 @@ export default function MarkAttendance({ user }) {
       notify('error', errMsg(error));
     } finally {
       setReasonBusy(false);
+    }
+  }
+
+  async function submitReport(event) {
+    event.preventDefault();
+    if (!reportForm.date) {
+      notify('error', 'Choose the date you forgot to check in.');
+      return;
+    }
+    if (reportForm.date > todayKey()) {
+      notify('error', 'You cannot report a missed check-in for a future date.');
+      return;
+    }
+    if (!reportForm.reason.trim()) {
+      notify('error', 'Add a short reason for the missed check-in.');
+      return;
+    }
+    if (Boolean(reportForm.requestedCheckIn) !== Boolean(reportForm.requestedCheckOut)) {
+      notify('error', 'Enter both expected times, or leave both blank.');
+      return;
+    }
+    if (
+      reportForm.requestedCheckIn &&
+      reportForm.requestedCheckOut &&
+      reportForm.requestedCheckOut <= reportForm.requestedCheckIn
+    ) {
+      notify('error', 'Expected check-out must be later than check-in.');
+      return;
+    }
+
+    setReportBusy(true);
+    try {
+      await api.post('/missed-check-ins', {
+        ...reportForm,
+        date: reportForm.date,
+        reason: reportForm.reason.trim(),
+      });
+      notify('success', 'Your admin has been informed and will review the date.');
+      setReportForm(emptyReportForm(user));
+      clearPageCache();
+      await loadReports({ silent: true });
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      setReportBusy(false);
     }
   }
 
@@ -450,6 +538,138 @@ export default function MarkAttendance({ user }) {
             )}
           </>
         )}
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading responsive-heading">
+          <div>
+            <h2 className="title-with-icon">
+              <CalendarPlus size={16} /> Forgot to check in?
+            </h2>
+            <p className="muted small-text">
+              Tell your admin which day you missed. Add the times you worked if you remember
+              them; your admin will confirm and mark the day.
+            </p>
+          </div>
+          <button
+            className="icon-btn"
+            onClick={() => loadReports()}
+            title="Refresh reports"
+            type="button"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
+
+        <form className="mark-grid report-form" onSubmit={submitReport}>
+          <label>
+            Date
+            <input
+              type="date"
+              required
+              max={todayKey()}
+              value={reportForm.date}
+              onChange={(event) => setReportForm({ ...reportForm, date: event.target.value })}
+            />
+          </label>
+          <label>
+            Expected check in (optional)
+            <input
+              type="time"
+              value={reportForm.requestedCheckIn}
+              onChange={(event) =>
+                setReportForm({ ...reportForm, requestedCheckIn: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Expected check out (optional)
+            <input
+              type="time"
+              value={reportForm.requestedCheckOut}
+              onChange={(event) =>
+                setReportForm({ ...reportForm, requestedCheckOut: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Location
+            <select
+              value={reportForm.location}
+              onChange={(event) => setReportForm({ ...reportForm, location: event.target.value })}
+            >
+              {WORK_LOCATIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="report-reason">
+            Reason
+            <input
+              required
+              maxLength={300}
+              value={reportForm.reason}
+              onChange={(event) => setReportForm({ ...reportForm, reason: event.target.value })}
+              placeholder="Why did you miss the check-in?"
+            />
+          </label>
+          <button className="primary" disabled={reportBusy}>
+            {reportBusy ? 'Sending...' : 'Inform admin'}
+          </button>
+        </form>
+
+        <div className="table-wrap" style={{ marginTop: 18 }}>
+          {reportsLoading && !reports.length ? (
+            <Spinner label="Loading your missed check-in reports..." />
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Reported times</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Reviewed by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((report) => (
+                  <tr key={report.id}>
+                    <td>{formatDate(report.date)}</td>
+                    <td>
+                      {report.requestedCheckIn || report.requestedCheckOut
+                        ? `${formatTime(report.requestedCheckIn)} – ${formatTime(
+                            report.requestedCheckOut
+                          )}`
+                        : '—'}
+                    </td>
+                    <td className="reason-cell" title={report.reason}>
+                      {report.reason}
+                    </td>
+                    <td>
+                      <Status status={report.status} />
+                    </td>
+                    <td>
+                      {report.reviewer?.name || '—'}
+                      {report.reviewNote && (
+                        <small className="cell-note">{report.reviewNote}</small>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!reports.length && (
+                  <tr>
+                    <td colSpan="5" className="empty">
+                      You have not reported a missed check-in yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
 
       {(!loading || records.length > 0) && (

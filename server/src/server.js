@@ -8,6 +8,7 @@ import employeeRoutes from './routes/employees.js';
 import attendanceRoutes from './routes/attendance.js';
 import leaveRoutes from './routes/leaves.js';
 import permissionRoutes from './routes/permissions.js';
+import missedCheckInRoutes from './routes/missedCheckIns.js';
 import dashboardRoutes from './routes/dashboard.js';
 import reportRoutes from './routes/reports.js';
 
@@ -54,6 +55,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/missed-check-ins', missedCheckInRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 

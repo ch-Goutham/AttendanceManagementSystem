@@ -7,13 +7,13 @@ A full-stack attendance and leave application built with MongoDB, Express, React
 ### Admin console (5 sections)
 - **Dashboard** — total employees, present today, permission today, on leave today and late arrivals, plus today's per-employee check-in/check-out activity with exact timestamps.
 - **Employees** — create employee logins, edit employee details (including department and position), reset passwords, deactivate/reactivate accounts, delete employees, and set each employee's default working location (Office, Work from home or College).
-- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row with exact timestamps and a per-day check-in/check-out count, ordered by employee name.
+- **Attendance** — every employee's check-in/check-out times, hours worked, full-day/half-day, late and early-checkout flags, late reasons, filters by employee/date/month, and corrections. Each check-in/check-out session is its own row with exact timestamps and a per-day check-in/check-out count, ordered by employee name. Admins can also **Mark attendance** for an employee and date with no record, and review employee reports of days they forgot to check in.
 - **Leave Management** — all leave requests and permission requests with reason, dates/time window, duration, status and employee history; approve or reject each request. The admin dashboard also lists every pending permission request for quick approval.
 - **Reports** — monthly team report or individual employee report. The monthly table shows full days, half days, approved permissions, check-ins, check-outs, open sessions, early logouts and leave days; the individual table lists exact session times. Excel (`.xlsx`) and PDF downloads carry the same columns.
 
 ### Employee workspace
 - Dashboard with the employee's total leave and permission requests plus approved/pending/rejected status.
-- **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history, approved permission days for the month and a monthly attendance percentage (half days count as 0.5, leave excluded).
+- **Mark Attendance** to check in and check out for today; the exact server time is captured automatically, with late-arrival reason entry, own attendance history, approved permission days for the month and a monthly attendance percentage (half days count as 0.5, leave excluded). A **Forgot to check in?** panel lets the employee report a missed date and optional expected times so the admin can mark attendance.
 - **Permission** form with reason, start time, end time and auto-calculated total duration, plus request status.
 - **Apply Leave** form with reason, start date, end date, total leave days and approval status.
 
@@ -41,6 +41,8 @@ A full-stack attendance and leave application built with MongoDB, Express, React
   - `RECHECKIN_COOLDOWN_MINUTES` (default `2`): after checking out, how long before the employee can start another session
   - `WORKING_DAYS` (default `1,2,3,4,5,6` = Monday–Saturday, `0` = Sunday)
 - Admins can override the day type when correcting a record.
+- Admins can mark attendance for an employee and date with no record, directly from the Attendance page. An existing record is corrected with Edit instead.
+- An employee can report a forgotten check-in for a past date or today. The admin reviews it and confirms the times; approval creates or updates that day's attendance record. A past date needs both check-in and check-out times, while today may be left open so the employee can check out later.
 - A day can contain more than one check-in/check-out session. After checking out, the employee can check in again once the cooldown has passed; all check-in times are kept and the day's hours are the sum of the sessions.
 - A check-out that happens after midnight (or an earlier forgotten check-out) closes the open record from the previous day when it is at most 20 hours old.
 - Attendance percentage = weighted present ÷ (weighted present + absent). A half day counts as `0.5`; leave and non-working days are excluded.
@@ -173,6 +175,12 @@ No client secret or redirect URI is needed for the ID-token flow. If the client 
 - `POST /api/attendance/check-in` / `POST /api/attendance/check-out` — employee check-in/out for today; check-in accepts an optional `lateReason` and `location` (`Office`, `Work from home` or `College`). A new session is allowed after `RECHECKIN_COOLDOWN_MINUTES`; all sessions are returned in `sessions`.
 - `PATCH /api/attendance/today/late-reason` — employee adds/updates today's reason for a late check-in
 - `PATCH /api/attendance/:id` — **admin** corrects status, times, day type or note
+- `POST /api/attendance` — **admin** creates a record for an employee and date with no existing entry (`employeeId`, `date`, `status`, optional `checkIn`, `checkOut`, `dayType`, `location`, `note`)
+
+### Missed check-ins
+- `POST /api/missed-check-ins` — employee reports a forgotten check-in (`date`, `reason`, optional `requestedCheckIn`, `requestedCheckOut`, `location`); future dates and duplicate pending/approved reports are rejected
+- `GET /api/missed-check-ins` — employee: own reports; admin: all reports (`employeeId`, `status`, `month`, `date` filters)
+- `PATCH /api/missed-check-ins/:id/review` — **admin** approves or rejects a report; approving takes `checkIn`, optional `checkOut` for today, `dayType`, `location`, `note` and writes the attendance record
 
 ### Leave
 - `POST /api/leaves` — employee applies for leave; responses include the computed `days`

@@ -474,3 +474,8 @@ img,svg{max-width:100%}
   .profile-picker{grid-template-columns:1fr}
   .profile-picker select{font-size:16px}
 }
+
+/* Missed check-in reports */
+.title-with-icon{display:flex;align-items:center;gap:7px}
+.report-form .report-reason{grid-column:1/-1}
+.report-form .primary{justify-self:start}

@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import Attendance from '../models/Attendance.js';
+import User from '../models/User.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 import {
   getAttendanceConfig,
@@ -16,6 +18,7 @@ import {
   todayKey,
   validateTimes
 } from '../utils/attendanceRules.js';
+import { buildManualAttendance } from '../utils/manualAttendance.js';
 
 const router = Router();
 const EMPLOYEE_FIELDS = 'name email employeeCode department location';
@@ -143,6 +146,63 @@ router.get('/', async (req, res, next) => {
       timeZone: getCompanyTimeZone()
     });
   } catch (e) {
+    next(e);
+  }
+});
+
+// Admin creates an attendance record for any employee and date. This covers a
+// day the employee never checked in and has no record yet; an existing record is
+// corrected through PATCH /api/attendance/:id instead.
+router.post('/', adminOnly, async (req, res, next) => {
+  try {
+    const { employeeId, date, status = 'Present', checkIn, checkOut, dayType, location, note } =
+      req.body || {};
+
+    if (!mongoose.isValidObjectId(employeeId))
+      return res.status(400).json({ message: 'Invalid employee id' });
+    if (!isValidDate(date)) return res.status(400).json({ message: 'date must be YYYY-MM-DD' });
+    if (date > todayKey())
+      return res.status(400).json({ message: 'Attendance cannot be marked for a future date' });
+
+    const employee = await User.findOne({ _id: employeeId, role: 'employee' })
+      .select(EMPLOYEE_FIELDS)
+      .lean();
+    if (!employee) return res.status(404).json({ message: 'Employee account not found' });
+
+    const effectiveStatus = status || 'Present';
+    const fallbackLocation =
+      effectiveStatus === 'Present' ? employee.location || 'Office' : '';
+    const providedLocation =
+      location === undefined || location === null ? fallbackLocation : String(location).trim();
+    const built = buildManualAttendance({
+      status: effectiveStatus,
+      checkIn,
+      checkOut,
+      dayType,
+      location: providedLocation,
+      note
+    });
+    if (built.error) return res.status(400).json({ message: built.error });
+
+    if (await Attendance.exists({ employee: employee._id, date }))
+      return res.status(409).json({
+        message: 'Attendance already exists for this date. Use Edit to correct it.'
+      });
+
+    const record = await Attendance.create({
+      employee: employee._id,
+      date,
+      ...built.fields,
+      markedBy: req.user._id
+    });
+    await record.populate('employee', EMPLOYEE_FIELDS);
+
+    res.status(201).json({ record: serializeAttendance(record) });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        message: 'Attendance already exists for this date. Use Edit to correct it.'
+      });
     next(e);
   }
 });

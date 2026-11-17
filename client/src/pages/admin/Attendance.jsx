@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Pencil } from 'lucide-react';
+import { Check, CalendarPlus, Pencil, Plus, RefreshCw, X } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import Spinner from '../../components/Spinner';
 import { Status, DayFlag } from '../../components/Ui';
-import { currentMonth, formatDate, formatExactTime, formatTime } from '../../lib/dates';
+import { currentMonth, formatDate, formatExactTime, formatTime, todayKey } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
 import { getEmployees } from '../../lib/employeeDirectory';
 import { clearPageCache, readPageCache, writePageCache } from '../../lib/pageCache';
@@ -24,6 +25,30 @@ const EDIT_EMPTY = {
   location: 'Office',
 };
 
+const MARK_EMPTY = {
+  employeeId: '',
+  date: '',
+  status: 'Present',
+  checkIn: '',
+  checkOut: '',
+  dayType: '',
+  location: 'Office',
+  note: '',
+};
+
+const REPORT_FORM_EMPTY = {
+  checkIn: '',
+  checkOut: '',
+  dayType: '',
+  location: 'Office',
+  note: '',
+};
+
+const reportCacheKey = (filters, status) =>
+  `admin:missed:${
+    status === 'Pending' ? 'pending' : `${filters.month}|${filters.date || 'all'}`
+  }|${filters.employeeId || 'all'}|${status || 'all'}`;
+
 export default function Attendance() {
   const notify = useToast();
   const [employees, setEmployees] = useState([]);
@@ -42,6 +67,22 @@ export default function Attendance() {
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editBusy, setEditBusy] = useState(false);
+  const [reports, setReports] = useState(() => {
+    const cached = readPageCache(reportCacheKey(INITIAL_FILTERS, 'Pending'));
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [reportStatus, setReportStatus] = useState('Pending');
+  const [reportsLoading, setReportsLoading] = useState(
+    () => !readPageCache(reportCacheKey(INITIAL_FILTERS, 'Pending'))
+  );
+  const [markOpen, setMarkOpen] = useState(false);
+  const [markForm, setMarkForm] = useState(MARK_EMPTY);
+  const [markBusy, setMarkBusy] = useState(false);
+  const [approving, setApproving] = useState(null);
+  const [approveForm, setApproveForm] = useState(REPORT_FORM_EMPTY);
+  const [approveBusy, setApproveBusy] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   async function loadEmployees() {
     setEmployees(await getEmployees());
@@ -77,6 +118,39 @@ export default function Attendance() {
     }
   }
 
+  async function loadReports({ silent = false } = {}) {
+    const cacheKey = reportCacheKey(filters, reportStatus);
+    const cached = readPageCache(cacheKey);
+    if (Array.isArray(cached)) {
+      setReports(cached);
+      if (!silent) setReportsLoading(false);
+    } else if (!silent) {
+      setReports([]);
+      setReportsLoading(true);
+    }
+
+    try {
+      const params = {};
+      // Pending reports are shown across every month so a forgotten check-in is
+      // never hidden just because the attendance table is on another month.
+      if (reportStatus !== 'Pending') {
+        if (filters.date) params.date = filters.date;
+        else if (filters.month) params.month = filters.month;
+      }
+      if (filters.employeeId) params.employeeId = filters.employeeId;
+      if (reportStatus) params.status = reportStatus;
+
+      const { data } = await api.get('/missed-check-ins', { params });
+      const nextReports = data.reports || [];
+      setReports(nextReports);
+      writePageCache(cacheKey, nextReports);
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      if (!silent) setReportsLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadEmployees().catch((error) => notify('error', errMsg(error)));
   }, []);
@@ -84,6 +158,10 @@ export default function Attendance() {
   useEffect(() => {
     load();
   }, [filters.month, filters.date, filters.employeeId]);
+
+  useEffect(() => {
+    loadReports();
+  }, [filters.month, filters.date, filters.employeeId, reportStatus]);
 
   function startEdit(record) {
     setEditing(record);
@@ -117,6 +195,152 @@ export default function Attendance() {
       notify('error', errMsg(error));
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  function openMarkModal() {
+    setMarkForm({
+      ...MARK_EMPTY,
+      date: todayKey(),
+      employeeId: filters.employeeId || '',
+    });
+    setMarkOpen(true);
+  }
+
+  async function saveMark(event) {
+    event.preventDefault();
+    if (!markForm.employeeId) {
+      notify('error', 'Choose an employee.');
+      return;
+    }
+    if (!markForm.date) {
+      notify('error', 'Choose the date to mark.');
+      return;
+    }
+    if (markForm.date > todayKey()) {
+      notify('error', 'Attendance cannot be marked for a future date.');
+      return;
+    }
+    if (
+      markForm.status === 'Present' &&
+      markForm.checkIn &&
+      markForm.checkOut &&
+      markForm.checkOut <= markForm.checkIn
+    ) {
+      notify('error', 'Check-out must be later than check-in.');
+      return;
+    }
+
+    setMarkBusy(true);
+    try {
+      await api.post('/attendance', {
+        employeeId: markForm.employeeId,
+        date: markForm.date,
+        status: markForm.status,
+        checkIn: markForm.status === 'Present' ? markForm.checkIn : '',
+        checkOut: markForm.status === 'Present' ? markForm.checkOut : '',
+        dayType: markForm.status === 'Present' ? markForm.dayType : '',
+        location: markForm.status === 'Present' ? markForm.location : '',
+        note: markForm.note,
+      });
+      const employeeName =
+        employees.find((employee) => employee.id === markForm.employeeId)?.name || 'employee';
+      notify('success', `Attendance marked for ${employeeName} on ${formatDate(markForm.date)}.`);
+      setMarkOpen(false);
+      clearPageCache();
+
+      const targetMonth = markForm.date.slice(0, 7);
+      const sameView =
+        filters.month === targetMonth &&
+        (!filters.date || filters.date === markForm.date) &&
+        (!filters.employeeId || filters.employeeId === markForm.employeeId);
+      if (sameView) {
+        await load({ silent: true });
+      } else {
+        setFilters({
+          month: targetMonth,
+          date: markForm.date,
+          employeeId: markForm.employeeId,
+        });
+      }
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      setMarkBusy(false);
+    }
+  }
+
+  function openApprove(report) {
+    setApproving(report);
+    setApproveForm({
+      checkIn: report.requestedCheckIn || '',
+      checkOut: report.requestedCheckOut || '',
+      dayType: '',
+      location: report.location || 'Office',
+      note: '',
+    });
+  }
+
+  async function saveApprove(event) {
+    event.preventDefault();
+    if (!approving) return;
+    if (approving.date < todayKey() && (!approveForm.checkIn || !approveForm.checkOut)) {
+      notify('error', 'For a past date, enter both check-in and check-out times.');
+      return;
+    }
+    if (
+      approveForm.checkIn &&
+      approveForm.checkOut &&
+      approveForm.checkOut <= approveForm.checkIn
+    ) {
+      notify('error', 'Check-out must be later than check-in.');
+      return;
+    }
+
+    setApproveBusy(true);
+    try {
+      await api.patch(`/missed-check-ins/${approving.id}/review`, {
+        action: 'approve',
+        ...approveForm,
+      });
+      notify(
+        'success',
+        `Attendance marked for ${approving.employee?.name || 'employee'} on ${formatDate(
+          approving.date
+        )}.`
+      );
+      setApproving(null);
+      clearPageCache();
+      await Promise.all([load({ silent: true }), loadReports({ silent: true })]);
+    } catch (error) {
+      notify('error', errMsg(error));
+    } finally {
+      setApproveBusy(false);
+    }
+  }
+
+  async function rejectReport(report) {
+    try {
+      await api.patch(`/missed-check-ins/${report.id}/review`, { action: 'reject' });
+      notify(
+        'success',
+        `Missed check-in report rejected for ${formatDate(report.date)}.`
+      );
+      clearPageCache();
+      await loadReports({ silent: true });
+    } catch (error) {
+      notify('error', errMsg(error));
+    }
+  }
+
+  async function runConfirm() {
+    if (!confirm?.onConfirm) return;
+    setConfirmBusy(true);
+    try {
+      await confirm.onConfirm();
+    } finally {
+      setConfirmBusy(false);
+      setConfirm(null);
     }
   }
 
@@ -163,10 +387,146 @@ export default function Attendance() {
           <p className="muted">
             View every employee&apos;s daily check-in and check-out counts, exact session
             timestamps, day type and late or early flags. Each session is listed on its own row;
-            correct a record when needed.
+            correct a record when needed, or mark attendance for a day with no entry.
           </p>
         </div>
+        <button className="primary" type="button" onClick={openMarkModal}>
+          <Plus size={16} /> Mark attendance
+        </button>
       </div>
+
+      <section className="panel">
+        <div className="panel-heading responsive-heading">
+          <div>
+            <h2 className="title-with-icon">
+              <CalendarPlus size={16} /> Missed check-in reports
+              {reportStatus === 'Pending' && reports.length > 0 && (
+                <span className="tab-count badge-warn">{reports.length}</span>
+              )}
+            </h2>
+            <p className="muted small-text">
+              Employees can report a day they forgot to check in. Use Mark attendance to confirm
+              the times and record the day.
+            </p>
+          </div>
+          <div className="filters">
+            <select
+              value={reportStatus}
+              onChange={(event) => setReportStatus(event.target.value)}
+              title="Report status"
+            >
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+              <option value="">All reports</option>
+            </select>
+            <button
+              className="icon-btn"
+              onClick={() => loadReports()}
+              title="Refresh reports"
+              type="button"
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="table-wrap">
+          {reportsLoading ? (
+            <Spinner label="Loading missed check-in reports..." />
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Reported times</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Reviewed by</th>
+                  <th className="col-action">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((report) => (
+                  <tr key={report.id}>
+                    <td>
+                      <div className="employee-cell">
+                        <div className="avatar tiny">{initials(report.employee?.name)}</div>
+                        <div>
+                          <b>{report.employee?.name || 'Employee'}</b>
+                          <small>
+                            {report.employee?.department || report.employee?.email}
+                          </small>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{formatDate(report.date)}</td>
+                    <td>
+                      {report.requestedCheckIn || report.requestedCheckOut
+                        ? `${formatTime(report.requestedCheckIn)} – ${formatTime(
+                            report.requestedCheckOut
+                          )}`
+                        : '—'}
+                    </td>
+                    <td className="reason-cell" title={report.reason}>
+                      {report.reason}
+                    </td>
+                    <td>
+                      <Status status={report.status} />
+                    </td>
+                    <td>
+                      {report.reviewer?.name || '—'}
+                      {report.reviewNote && (
+                        <small className="cell-note">{report.reviewNote}</small>
+                      )}
+                    </td>
+                    <td className="col-action">
+                      {report.status === 'Pending' ? (
+                        <div className="row-actions">
+                          <button
+                            className="approve-btn"
+                            type="button"
+                            onClick={() => openApprove(report)}
+                          >
+                            <Check size={14} /> Mark attendance
+                          </button>
+                          <button
+                            className="reject-btn"
+                            type="button"
+                            onClick={() =>
+                              setConfirm({
+                                title: 'Reject missed check-in report?',
+                                message: `${
+                                  report.employee?.name || 'This employee'
+                                } reported a missed check-in on ${formatDate(report.date)}.`,
+                                confirmLabel: 'Reject',
+                                danger: true,
+                                onConfirm: () => rejectReport(report),
+                              })
+                            }
+                          >
+                            <X size={14} /> Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="muted small-text">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {!reports.length && (
+                  <tr>
+                    <td colSpan="7" className="empty">
+                      No missed check-in reports match these filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
 
       <section className="panel">
         <div className="panel-heading responsive-heading">
@@ -496,6 +856,239 @@ export default function Attendance() {
           </div>
         </div>
       )}
+
+      {markOpen && (
+        <div className="modal-backdrop" onClick={() => setMarkOpen(false)}>
+          <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <h3>Mark attendance</h3>
+            <p className="muted">
+              Create a record for an employee and date with no attendance entry. Times are
+              optional; leaving them blank records a Present day without a session. To change an
+              existing row, use Edit instead.
+            </p>
+            <form className="edit-form" onSubmit={saveMark}>
+              <label>
+                Employee
+                <select
+                  required
+                  value={markForm.employeeId}
+                  onChange={(event) =>
+                    setMarkForm({ ...markForm, employeeId: event.target.value })
+                  }
+                >
+                  <option value="">Choose employee</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Date
+                <input
+                  type="date"
+                  required
+                  max={todayKey()}
+                  value={markForm.date}
+                  onChange={(event) => setMarkForm({ ...markForm, date: event.target.value })}
+                />
+              </label>
+              <label>
+                Status
+                <select
+                  value={markForm.status}
+                  onChange={(event) => {
+                    const status = event.target.value;
+                    setMarkForm({
+                      ...markForm,
+                      status,
+                      checkIn: status === 'Present' ? markForm.checkIn : '',
+                      checkOut: status === 'Present' ? markForm.checkOut : '',
+                      dayType: status === 'Present' ? markForm.dayType : '',
+                    });
+                  }}
+                >
+                  <option>Present</option>
+                  <option>Absent</option>
+                  <option>Leave</option>
+                </select>
+              </label>
+              <label>
+                Check in
+                <input
+                  type="time"
+                  value={markForm.checkIn}
+                  disabled={markForm.status !== 'Present'}
+                  onChange={(event) =>
+                    setMarkForm({ ...markForm, checkIn: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Check out
+                <input
+                  type="time"
+                  value={markForm.checkOut}
+                  disabled={markForm.status !== 'Present'}
+                  onChange={(event) =>
+                    setMarkForm({ ...markForm, checkOut: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Day type
+                <select
+                  value={markForm.dayType}
+                  disabled={markForm.status !== 'Present'}
+                  onChange={(event) =>
+                    setMarkForm({ ...markForm, dayType: event.target.value })
+                  }
+                >
+                  <option value="">Auto from hours</option>
+                  <option value="Full day">Full day</option>
+                  <option value="Half day">Half day</option>
+                </select>
+              </label>
+              <label className="edit-note">
+                Location
+                <select
+                  value={markForm.location}
+                  disabled={markForm.status !== 'Present'}
+                  onChange={(event) =>
+                    setMarkForm({ ...markForm, location: event.target.value })
+                  }
+                >
+                  <option value="">Not set</option>
+                  {LOCATIONS.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="edit-note">
+                Note
+                <input
+                  value={markForm.note}
+                  onChange={(event) => setMarkForm({ ...markForm, note: event.target.value })}
+                  placeholder="Why is this record being added? (optional)"
+                />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setMarkOpen(false)}>
+                  Cancel
+                </button>
+                <button className="primary" disabled={markBusy}>
+                  {markBusy ? 'Saving...' : 'Mark attendance'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {approving && (
+        <div className="modal-backdrop" onClick={() => setApproving(null)}>
+          <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <h3>Mark attendance for this report</h3>
+            <p className="muted">
+              {approving.employee?.name || 'Employee'} · {formatDate(approving.date)}
+              {approving.requestedCheckIn || approving.requestedCheckOut
+                ? ` · reported ${formatTime(approving.requestedCheckIn)} – ${formatTime(
+                    approving.requestedCheckOut
+                  )}`
+                : ''}
+            </p>
+            <div className="modal-sessions">
+              <p className="late-reason-title">Employee reason</p>
+              <p className="muted small-text">{approving.reason}</p>
+            </div>
+            <form className="edit-form" onSubmit={saveApprove}>
+              <label>
+                Check in
+                <input
+                  type="time"
+                  required
+                  value={approveForm.checkIn}
+                  onChange={(event) =>
+                    setApproveForm({ ...approveForm, checkIn: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Check out{approving.date < todayKey() ? '' : ' (optional)'}
+                <input
+                  type="time"
+                  required={approving.date < todayKey()}
+                  value={approveForm.checkOut}
+                  onChange={(event) =>
+                    setApproveForm({ ...approveForm, checkOut: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Day type
+                <select
+                  value={approveForm.dayType}
+                  onChange={(event) =>
+                    setApproveForm({ ...approveForm, dayType: event.target.value })
+                  }
+                >
+                  <option value="">Auto from hours</option>
+                  <option value="Full day">Full day</option>
+                  <option value="Half day">Half day</option>
+                </select>
+              </label>
+              <label>
+                Location
+                <select
+                  value={approveForm.location}
+                  onChange={(event) =>
+                    setApproveForm({ ...approveForm, location: event.target.value })
+                  }
+                >
+                  <option value="">Not set</option>
+                  {LOCATIONS.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="edit-note">
+                Note
+                <input
+                  value={approveForm.note}
+                  onChange={(event) =>
+                    setApproveForm({ ...approveForm, note: event.target.value })
+                  }
+                  placeholder="Optional note for the attendance record"
+                />
+              </label>
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={() => setApproving(null)}>
+                  Cancel
+                </button>
+                <button className="primary" disabled={approveBusy}>
+                  {approveBusy ? 'Saving...' : 'Approve and mark'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm?.title}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
+        danger={confirm?.danger}
+        busy={confirmBusy}
+        onConfirm={runConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

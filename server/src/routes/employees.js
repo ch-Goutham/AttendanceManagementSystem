@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Attendance from '../models/Attendance.js';
 import Leave from '../models/Leave.js';
 import Permission from '../models/Permission.js';
+import MissedCheckIn from '../models/MissedCheckIn.js';
 import ResetToken from '../models/ResetToken.js';
 import { passwordError } from '../utils/password.js';
 import { isValidLocation } from '../config/attendance.js';
@@ -200,6 +201,7 @@ router.delete('/:id', async (req, res, next) => {
       Attendance.deleteMany({ employee: user._id }),
       Leave.deleteMany({ employee: user._id }),
       Permission.deleteMany({ employee: user._id }),
+      MissedCheckIn.deleteMany({ employee: user._id }),
       ResetToken.deleteMany({ user: user._id })
     ]);
     await user.deleteOne();

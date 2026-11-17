@@ -16,7 +16,7 @@ router.use(protect);
 // so the admin can act on anything waiting.
 router.get('/', adminOnly, async (_req, res, next) => {
   try {
-    const date = todayKey();
+    const date = todayKey();      
 
     // Run every independent query at once. Attendance is filtered against the
     // active employee IDs in memory instead of making the dashboard wait for a

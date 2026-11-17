@@ -47,6 +47,38 @@ export function leaveShape(leave) {
   };
 }
 
+export function missedCheckInShape(report) {
+  return {
+    id: report._id,
+    date: report.date,
+    reason: report.reason,
+    requestedCheckIn: report.requestedCheckIn || '',
+    requestedCheckOut: report.requestedCheckOut || '',
+    location: report.location || '',
+    status: report.status,
+    attendanceId: report.attendance
+      ? String(report.attendance._id || report.attendance)
+      : null,
+    reviewNote: report.reviewNote,
+    reviewedAt: report.reviewedAt,
+    reviewer:
+      report.reviewedBy && report.reviewedBy.name
+        ? { id: String(report.reviewedBy._id), name: report.reviewedBy.name }
+        : null,
+    createdAt: report.createdAt,
+    employee:
+      report.employee && report.employee.name
+        ? {
+            id: report.employee._id,
+            name: report.employee.name,
+            email: report.employee.email,
+            employeeCode: report.employee.employeeCode,
+            department: report.employee.department,
+          }
+        : null,
+  };
+}
+
 export function permissionShape(permission) {
   return {
     id: permission._id,
