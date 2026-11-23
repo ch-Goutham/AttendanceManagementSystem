@@ -9,6 +9,7 @@ import {
   Search,
   Pencil,
   IdCard,
+  X,
 } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
@@ -544,6 +545,14 @@ export default function Employees({ onOpenProfile }) {
       {editForm && (
         <div className="modal-backdrop" onClick={closeEdit}>
           <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={closeEdit}
+            >
+              <X size={18} />
+            </button>
             <h3>Edit employee</h3>
             <p className="muted">
               Update the profile details for {editForm.name || 'this employee'}.

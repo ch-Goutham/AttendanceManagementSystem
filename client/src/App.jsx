@@ -85,6 +85,109 @@ function App() {
   const [profileEmployeeId, setProfileEmployeeId] = useState('');
   const authRef = useRef(auth);
   const navigate = useNavigate();
+  // Screens are switched by state (not routes), so browser history alone cannot
+  // take the user back to the previous screen. Keep our own page stack instead.
+  const pageHistoryRef = useRef([]);
+  const currentPageRef = useRef(activePage);
+  // False if this browser refused a pushState (some embedded webviews throw).
+  // In that case navigation must be driven by React state only, because there
+  // is no browser entry to go back to and history.back() would leave the app.
+  const historyTrustedRef = useRef(true);
+  const guardedRoleRef = useRef(null);
+
+  // Mirror an in-app screen change into the browser history so the system /
+  // browser back button returns to the previous screen instead of leaving the
+  // app. Router state is preserved so BrowserRouter keeps working normally.
+  const pushHistoryEntry = (state) => {
+    try {
+      window.history.pushState(
+        { ...(window.history.state || {}), ...state },
+        ''
+      );
+      return true;
+    } catch {
+      historyTrustedRef.current = false;
+      return false;
+    }
+  };
+
+  // Always keep one in-app entry behind the current one. Without this the OS /
+  // browser back button can walk past the workspace and close the app.
+  const armHistoryGuard = () => {
+    if (!historyTrustedRef.current) return;
+    pushHistoryEntry({
+      attendancePage: currentPageRef.current,
+      attendanceGuard: true,
+    });
+  };
+
+  const applyPage = (key, { reset = false } = {}) => {
+    if (reset) {
+      pageHistoryRef.current = [];
+    } else if (currentPageRef.current && currentPageRef.current !== key) {
+      pageHistoryRef.current.push(currentPageRef.current);
+      pushHistoryEntry({ attendancePage: key });
+    }
+    currentPageRef.current = key;
+    setActivePage(key);
+  };
+
+  // Visible back button. When the browser accepted our history entries, use
+  // history.back() so the browser and our stack stay in sync; otherwise change
+  // the screen with state only. Either way the app is never left from here.
+  const goBackPage = () => {
+    const stack = pageHistoryRef.current;
+    if (stack.length && historyTrustedRef.current) {
+      window.history.back();
+      return;
+    }
+    if (stack.length) {
+      const previous = stack.pop();
+      currentPageRef.current = previous;
+      setActivePage(previous);
+      return;
+    }
+    // No in-app history yet: land on the workspace home, never exit the app.
+    const home = DEFAULT_PAGE[authRef.current?.role] || 'dashboard';
+    currentPageRef.current = home;
+    setActivePage(home);
+  };
+
+  // Browser / Android hardware back: walk our own stack instead of leaving.
+  // While signed in every back press is consumed by the workspace; signed-out
+  // pages keep normal browser behaviour so users can still leave the login form.
+  useEffect(() => {
+    const onPopState = () => {
+      if (!authRef.current) return;
+      const stack = pageHistoryRef.current;
+      if (stack.length) {
+        const previous = stack.pop();
+        currentPageRef.current = previous;
+        setActivePage(previous);
+      } else {
+        const home = DEFAULT_PAGE[authRef.current.role] || 'dashboard';
+        currentPageRef.current = home;
+        setActivePage(home);
+      }
+      // Re-arm so the next back press is intercepted too.
+      armHistoryGuard();
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Arm the guard as soon as a workspace opens. A role change (sign in, sign
+  // out, cross-tab session swap) starts a fresh in-app history.
+  useEffect(() => {
+    if (!auth) {
+      guardedRoleRef.current = null;
+      pageHistoryRef.current = [];
+      return;
+    }
+    if (guardedRoleRef.current === auth.role) return;
+    guardedRoleRef.current = auth.role;
+    armHistoryGuard();
+  }, [auth]);
 
   useEffect(() => {
     authRef.current = auth;
@@ -110,7 +213,7 @@ function App() {
         }
         updateAuthUser(user);
         setAuth(user);
-        setActivePage(DEFAULT_PAGE[user.role] || 'dashboard');
+        applyPage(DEFAULT_PAGE[user.role] || 'dashboard', { reset: true });
       })
       .catch((error) => {
         if (!alive) return;
@@ -137,7 +240,7 @@ function App() {
       const wasAdmin = authRef.current?.role === 'admin';
       clearClientCaches();
       setAuth(null);
-      setActivePage('dashboard');
+      applyPage('dashboard', { reset: true });
       setProfileEmployeeId('');
       navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
     };
@@ -157,7 +260,7 @@ function App() {
       const next = readAuth(portal);
       clearClientCaches();
       setAuth(next?.user || null);
-      setActivePage(DEFAULT_PAGE[next?.user?.role] || 'dashboard');
+      applyPage(DEFAULT_PAGE[next?.user?.role] || 'dashboard', { reset: true });
       setProfileEmployeeId('');
     };
     window.addEventListener('storage', onStorage);
@@ -170,7 +273,7 @@ function App() {
     clearAuth(role);
     clearClientCaches();
     setAuth(null);
-    setActivePage('dashboard');
+    applyPage('dashboard', { reset: true });
     setProfileEmployeeId('');
     navigate(wasAdmin ? '/admin-login' : '/login', { replace: true });
   };
@@ -187,19 +290,19 @@ function App() {
   // only the employee-row action preselects someone else.
   const selectPage = (key) => {
     if (key === 'profile') setProfileEmployeeId('');
-    setActivePage(key);
+    applyPage(key);
   };
 
   const openEmployeeProfile = (employeeId) => {
     setProfileEmployeeId(employeeId || '');
-    setActivePage('profile');
+    applyPage('profile');
   };
 
   const onAuth = (data, remember = true) => {
     saveAuth(data, remember);
     clearClientCaches();
     setAuth(data.user);
-    setActivePage(DEFAULT_PAGE[data.user.role] || 'dashboard');
+    applyPage(DEFAULT_PAGE[data.user.role] || 'dashboard', { reset: true });
     setProfileEmployeeId('');
     navigate(HOME_FOR_ROLE[data.user.role] || '/login', { replace: true });
   };
@@ -296,6 +399,7 @@ function App() {
                 signOut={signOut}
                 activePage={activePage}
                 setActivePage={selectPage}
+                onBack={goBackPage}
               >
                 <AdminWorkspace
                   user={auth}
@@ -318,6 +422,7 @@ function App() {
                 signOut={signOut}
                 activePage={activePage}
                 setActivePage={selectPage}
+                onBack={goBackPage}
               >
                 <EmployeeWorkspace
                   user={auth}

@@ -4,6 +4,7 @@ import api from '../../api';
 import { useToast } from '../../components/Toast';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import Spinner from '../../components/Spinner';
+import TimeInput from '../../components/TimeInput';
 import { Status, DayFlag } from '../../components/Ui';
 import { currentMonth, formatDate, formatExactTime, formatTime, todayKey } from '../../lib/dates';
 import { errMsg, initials } from '../../lib/format';
@@ -735,6 +736,14 @@ export default function Attendance() {
       {editing && (
         <div className="modal-backdrop" onClick={() => setEditing(null)}>
           <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={() => setEditing(null)}
+            >
+              <X size={18} />
+            </button>
             <h3>Correct attendance</h3>
             <p className="muted">
               {editing.employee?.name || 'Employee'} · {formatDate(editing.date)}
@@ -794,8 +803,7 @@ export default function Attendance() {
               </label>
               <label>
                 Check in
-                <input
-                  type="time"
+                <TimeInput
                   value={editForm.checkIn}
                   disabled={editForm.status !== 'Present'}
                   onChange={(event) => setEditForm({ ...editForm, checkIn: event.target.value })}
@@ -803,8 +811,7 @@ export default function Attendance() {
               </label>
               <label>
                 Check out
-                <input
-                  type="time"
+                <TimeInput
                   value={editForm.checkOut}
                   disabled={editForm.status !== 'Present'}
                   onChange={(event) => setEditForm({ ...editForm, checkOut: event.target.value })}
@@ -860,6 +867,14 @@ export default function Attendance() {
       {markOpen && (
         <div className="modal-backdrop" onClick={() => setMarkOpen(false)}>
           <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={() => setMarkOpen(false)}
+            >
+              <X size={18} />
+            </button>
             <h3>Mark attendance</h3>
             <p className="muted">
               Create a record for an employee and date with no attendance entry. Times are
@@ -916,8 +931,7 @@ export default function Attendance() {
               </label>
               <label>
                 Check in
-                <input
-                  type="time"
+                <TimeInput
                   value={markForm.checkIn}
                   disabled={markForm.status !== 'Present'}
                   onChange={(event) =>
@@ -927,8 +941,7 @@ export default function Attendance() {
               </label>
               <label>
                 Check out
-                <input
-                  type="time"
+                <TimeInput
                   value={markForm.checkOut}
                   disabled={markForm.status !== 'Present'}
                   onChange={(event) =>
@@ -991,6 +1004,14 @@ export default function Attendance() {
       {approving && (
         <div className="modal-backdrop" onClick={() => setApproving(null)}>
           <div className="modal wide" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="modal-close"
+              aria-label="Close"
+              onClick={() => setApproving(null)}
+            >
+              <X size={18} />
+            </button>
             <h3>Mark attendance for this report</h3>
             <p className="muted">
               {approving.employee?.name || 'Employee'} · {formatDate(approving.date)}
@@ -1007,8 +1028,7 @@ export default function Attendance() {
             <form className="edit-form" onSubmit={saveApprove}>
               <label>
                 Check in
-                <input
-                  type="time"
+                <TimeInput
                   required
                   value={approveForm.checkIn}
                   onChange={(event) =>
@@ -1018,8 +1038,7 @@ export default function Attendance() {
               </label>
               <label>
                 Check out{approving.date < todayKey() ? '' : ' (optional)'}
-                <input
-                  type="time"
+                <TimeInput
                   required={approving.date < todayKey()}
                   value={approveForm.checkOut}
                   onChange={(event) =>

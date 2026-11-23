@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   CalendarDays,
+  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   LogOut,
@@ -47,10 +48,14 @@ const PAGE_TITLES = {
   },
 };
 
-export default function Shell({ user, signOut, activePage, setActivePage, children }) {
+export default function Shell({ user, signOut, activePage, setActivePage, onBack, children }) {
   const nav = user.role === 'admin' ? ADMIN_NAV : EMPLOYEE_NAV;
   const title = PAGE_TITLES[user.role]?.[activePage] || 'Workspace';
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) onBack();
+  };
 
   useEffect(() => {
     setMenuOpen(false);
@@ -159,6 +164,14 @@ export default function Shell({ user, signOut, activePage, setActivePage, childr
               onClick={() => setMenuOpen(true)}
             >
               <Menu size={20} />
+            </button>
+            <button
+              type="button"
+              className="back-btn"
+              aria-label="Go back"
+              onClick={handleBack}
+            >
+              <ChevronLeft size={20} />
             </button>
             <div>
               <span className="breadcrumb">Workspace / </span>

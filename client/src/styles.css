@@ -43,7 +43,9 @@
 /* Mobile navigation: hamburger + off-canvas drawer */
 .menu-btn{place-items:center;height:36px;width:36px;flex:0 0 auto;border:1px solid rgba(0,7,45,.12);background:#fff;border-radius:8px;color:#00072D}
 .menu-btn:hover{background:rgba(0,7,45,.04)}
-.topbar-left{display:flex;align-items:center;gap:12px;min-width:0}
+.back-btn{display:grid;place-items:center;height:36px;width:36px;flex:0 0 auto;border:1px solid rgba(0,7,45,.12);background:#fff;border-radius:8px;color:#00072D}
+.back-btn:hover{background:rgba(0,7,45,.04)}
+.topbar-left{display:flex;align-items:center;gap:8px;min-width:0}
 .sidebar-close{place-items:center;height:32px;width:32px;flex:0 0 auto;margin-left:auto;border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#FFFFFF}
 .sidebar-close:hover{background:rgba(255,255,255,.20)}
 /* Wide screens keep the persistent sidebar: the hamburger, the drawer close
@@ -66,7 +68,9 @@
 @keyframes toast-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
 @keyframes oc-fade{from{opacity:0}to{opacity:1}}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,7,45,.65);display:grid;place-items:center;z-index:9998;padding:20px;animation:oc-fade .2s ease}
-.modal{background:#fff;border-radius:16px;padding:28px;max-width:430px;width:100%;text-align:center;box-shadow:0 30px 80px rgba(0,7,45,.20);animation:modal-in .2s ease}
+.modal{background:#fff;border-radius:16px;padding:28px;max-width:430px;width:100%;text-align:center;box-shadow:0 30px 80px rgba(0,7,45,.20);animation:modal-in .2s ease;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:rgba(0,7,45,.55)}
+.modal-close:hover{background:rgba(0,7,45,.08);color:#00072D}
 @keyframes modal-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
 .modal-badge{height:52px;width:52px;border-radius:50%;background:rgba(0,7,45,.08);color:#00072D;display:grid;place-items:center;margin:0 auto 14px}
 .modal-badge.danger{background:#fff;color:#00072D;box-shadow:inset 0 0 0 1px rgba(0,7,45,.40)}
@@ -166,6 +170,19 @@
 .edit-form label{display:flex;flex-direction:column;gap:7px;font-size:11px;color:rgba(0,7,45,.66);font-weight:600}
 .edit-form input,.edit-form select{height:40px;border:1px solid rgba(0,7,45,.12);border-radius:7px;background:#fff;padding:0 11px;color:#00072D;outline:none;min-width:0}
 .edit-form input:focus,.edit-form select:focus{border-color:#00072D;box-shadow:0 0 0 3px rgba(0,7,45,.18)}
+/* 12-hour time picker: hour / minute / AM-PM selects sharing one row. */
+.time-input{display:flex;align-items:center;gap:5px;min-width:0}
+.time-input select{height:40px;border:1px solid rgba(0,7,45,.12);border-radius:7px;background:#fff;padding:0 8px;color:#00072D;outline:none;font-size:12px;font-weight:600;min-width:0}
+.time-input select:focus{border-color:#00072D;box-shadow:0 0 0 3px rgba(0,7,45,.18)}
+.time-input select:disabled{background:rgba(0,7,45,.04);color:rgba(0,7,45,.40);cursor:not-allowed}
+.time-input .time-hour{flex:1 1 58px;max-width:72px}
+.time-input .time-minute{flex:1 1 64px;max-width:80px}
+.time-input .time-meridiem{flex:0 0 70px;max-width:70px}
+.time-input .time-colon{color:rgba(0,7,45,.55);font-weight:700;line-height:1}
+@media(max-width:720px){
+  .time-input select{height:44px;font-size:16px}
+  .time-input .time-meridiem{flex:0 0 84px;max-width:84px}
+}
 .edit-form .edit-note{grid-column:1/-1}
 .edit-form .modal-actions{grid-column:1/-1;justify-content:flex-end;margin-top:4px}
 .checkin-panel{padding:22px 24px}

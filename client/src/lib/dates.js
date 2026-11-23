@@ -25,7 +25,8 @@ export const formatTime = (value) => {
   if (!value || !/^\d{2}:\d{2}$/.test(value)) return '-';
   const [hours, minutes] = value.split(':').map(Number);
   const date = new Date(2000, 0, 1, hours, minutes);
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  // en-US keeps the AM/PM suffix uppercase and the same width everywhere.
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
 // Exact server-captured instant (ISO string), including seconds. The optional
@@ -35,9 +36,9 @@ export const formatExactTime = (value, timeZone) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  const options = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  const options = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true };
   if (timeZone) options.timeZone = timeZone;
-  return date.toLocaleTimeString(undefined, options);
+  return date.toLocaleTimeString('en-US', options);
 };
 
 export const durationLabel = (minutes) => {

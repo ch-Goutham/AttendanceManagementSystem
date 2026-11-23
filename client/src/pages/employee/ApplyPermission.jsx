@@ -3,6 +3,7 @@ import { Clock, RefreshCw } from 'lucide-react';
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
+import TimeInput from '../../components/TimeInput';
 import { Status } from '../../components/Ui';
 import { durationLabel, formatDate, formatTime, timeToMinutes, todayKey } from '../../lib/dates';
 import { errMsg } from '../../lib/format';
@@ -99,8 +100,7 @@ export default function ApplyPermission() {
           </label>
           <label>
             Start time
-            <input
-              type="time"
+            <TimeInput
               required
               value={form.startTime}
               onChange={(event) => setForm({ ...form, startTime: event.target.value })}
@@ -108,8 +108,7 @@ export default function ApplyPermission() {
           </label>
           <label>
             End time
-            <input
-              type="time"
+            <TimeInput
               required
               value={form.endTime}
               onChange={(event) => setForm({ ...form, endTime: event.target.value })}

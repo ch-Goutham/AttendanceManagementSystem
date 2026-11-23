@@ -15,6 +15,7 @@ import {
 import api from '../../api';
 import { useToast } from '../../components/Toast';
 import Spinner from '../../components/Spinner';
+import TimeInput from '../../components/TimeInput';
 import { DayFlag, StatCard, Status } from '../../components/Ui';
 import {
   countdownLabel,
@@ -574,8 +575,7 @@ export default function MarkAttendance({ user }) {
           </label>
           <label>
             Expected check in (optional)
-            <input
-              type="time"
+            <TimeInput
               value={reportForm.requestedCheckIn}
               onChange={(event) =>
                 setReportForm({ ...reportForm, requestedCheckIn: event.target.value })
@@ -584,8 +584,7 @@ export default function MarkAttendance({ user }) {
           </label>
           <label>
             Expected check out (optional)
-            <input
-              type="time"
+            <TimeInput
               value={reportForm.requestedCheckOut}
               onChange={(event) =>
                 setReportForm({ ...reportForm, requestedCheckOut: event.target.value })
